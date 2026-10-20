@@ -45,6 +45,17 @@ Each tab button, `WBP_TagSwitcher_C` (`WBP_TagSwitcher.hpp`), has `Txt_Title`, `
 
 Other tab bars found in game (titles read live): catalog `Materials | Goods | Stats | Ledger`, workbench `Unlocks | Equipment`, build panel `Build | Blueprints`, mailbox `Quests | Loans`.
 
-## Not verified yet
+## Adding a tab (verified in game 2026-10-20)
 
-Adding a fourth tab means adding a `WBP_TagSwitcher_C` to `EntryPanel` and `EntryList`, a title to `TitleList`, and a page to `WidgetSwitcher_0`. Whether the panel's own switching logic accepts a fourth index, and whether the game rebuilds the bar (dropping added entries) when the menu reopens, still has to be tested in game.
+Tested on game 1.1.5023 with UE4SS 1181 and a throwaway Lua mod loaded by AF Mod Loader.
+
+- The TAB menu panel is created once and **reused**: every time the menu opens, the same `WBP_PlayerGearPanel_C` instance gets `BP_OnActivated` (and `BP_OnDeactivated` when it closes).
+- Each time the menu opens, the tab bar runs `PreConstruct` again and rebuilds its buttons from `TitleList`.
+- Package paths: `/Game/Blueprints/WBP/PlayerGear/WBP_PlayerGearPanel.WBP_PlayerGearPanel_C` and `/Game/Blueprints/WBP/Utility/WBP_TagSwitcherGroup.WBP_TagSwitcherGroup_C`. Both are loaded when Lua mods start, so post hooks on their functions register at once.
+- Hookable (post hooks, as for every Blueprint function): `BP_OnActivated`, `BP_OnDeactivated`, the group's `PreConstruct` and `OnEntryClick(int32)`, and the panel's `BndEvt__WBP_PlayerGearPanel_TagSwithcer_K2Node_ComponentBoundEvent_0_OnTagSwitch__DelegateSignature(int32)`. A click on a tab calls the panel's `OnTagSwitch` handler, then the group's `OnEntryClick`, with the tab index.
+- **What works:** with the menu open, append a title to `TitleList` (`list[#list + 1] = FText("...")`), call `EntryPanel:ClearChildren()` and `EntryList:Empty()`, then `PreConstruct(false)` on the group. The game builds the fourth button itself, wired to its click handling. Then add the page with `WidgetSwitcher_0:AddChild(widget)`: the panel's own handler switches `WidgetSwitcher_0` to index 3 when the tab is clicked. The tab and page stay when the menu is closed and opened again (same instance, and `TitleList` keeps the extra title).
+- **What does not work:** creating a `WBP_TagSwitcher_C` by hand and adding it to `EntryPanel` and `EntryList`. The button shows but clicking it does nothing.
+- Page widgets: plain UMG widgets (`VerticalBox`, `TextBlock`, `EditableTextBox`) created with `StaticConstructObject(class, panel.WidgetTree)`, and game user widgets created with `WidgetBlueprintLibrary:Create(panel, class, playerController)`, display correctly. Text typed in an `EditableTextBox` on the page reaches the box (the game does not take the keys as shortcuts).
+- `WBP_SimpleItemTile_C` (`/Game/Blueprints/WBP/...`, created with `Create`) shows an item icon after `UpdateItemInfo(FName(item), 1, 0, false)`, and its hover tooltip is the game's full item card (localized name, category, where it is crafted).
+
+Not tested yet: gamepad or keyboard navigation to the new tab, and what happens when a save is loaded again while the panel instance lives.
