@@ -1,0 +1,19 @@
+# Build output and local test installs
+dist/
+build/
+*.zip
+*.pak
+*.utoc
+*.ucas
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+Thumbs.db
+.DS_Store
+
+# Claude Code local files
+.claude/worktrees/
+.claude/settings.local.json
