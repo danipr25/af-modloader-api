@@ -1,6 +1,6 @@
 # API reference
 
-AF Mod Loader API 0.1.1 for mod authors. Game 1.1.5023, UE4SS 1181, AF Mod Loader 0.1.0.
+AF Mod Loader API 0.1.2 for mod authors. Game 1.1.5023, UE4SS 1181, AF Mod Loader 0.1.0.
 
 Each function says what is **verified in game** and what is **not verified yet**. Nothing marked "not verified" has run in the game: it is written from the UE4SS and Unreal Engine documentation, wrapped so that a failure is logged instead of crashing, and waits for the in-game test. Verified findings are recorded in [tab-menu.md](tab-menu.md) and [console.md](console.md).
 
@@ -8,15 +8,15 @@ Each function says what is **verified in game** and what is **not verified yet**
 
 ### Versions
 
-The API is 0.x until 1.0. A patch version (0.1.1) fixes things or adds functions and never breaks a mod. A minor version (0.2.0) may break mods, and the changelog says how. So a mod depends on one minor line of the API, and of the loader, which follows the same rule:
+The API is 0.x until 1.0. A patch version (0.1.2) fixes things or adds functions and never breaks a mod. A minor version (0.2.0) may break mods, and the changelog says how. So a mod depends on one minor line of the API, and of the loader, which follows the same rule:
 
 ```json
 "depends": { "af-modloader": ">=0.1.0 <0.2.0", "af-modloader-api": ">=0.1.0 <0.2.0" }
 ```
 
-`api.version` is the installed version as text, like `"0.1.1"`.
+`api.version` is the installed version as text, like `"0.1.2"`.
 
-Raise the lower bound to the first version that has every call your mod uses. `page:row()`, `row:button`, `page:grid()` and clicks on tiles came with 0.1.1, so a mod that uses them depends on `"af-modloader-api": ">=0.1.1 <0.2.0"`. A mod that does not use them keeps working with `>=0.1.0`.
+Raise the lower bound to the first version that has every call your mod uses. `page:row()`, `row:button`, `page:grid()` and clicks on tiles came with 0.1.1, so a mod that uses them depends on `"af-modloader-api": ">=0.1.1 <0.2.0"`. A mod that does not use them keeps working with `>=0.1.0`. `api.world` came with 0.1.2, so a mod that uses it depends on `"af-modloader-api": ">=0.1.2 <0.2.0"`.
 
 ### Threads
 
@@ -194,6 +194,62 @@ The API does not look up item names or recipes: that is the mod's job.
 
 Status: the item tile (`WBP_SimpleItemTile_C` with `UpdateItemInfo`) is **verified in game** with a count of 1, including its tooltip. The scrolling list, its rows and the fill-the-page setting are **verified in game** too (2026-10-21): 300 rows of item tiles scroll smoothly, building them takes about 80 ms, and clearing and rebuilding the list on every filter change feels instant. How a count other than 1 is shown was not checked.
 
+## World
+
+Which world (the player's playthrough, with its save slots) is loaded. The facts behind it are in [world.md](world.md).
+
+### `api.world.onEnter(fn)`
+
+Calls `fn(world)` each time a world is loaded and its name is known: loading a save, starting a new game, loading another slot of the same world. Like tabs and commands, it can only be called while your mod's entrypoint runs. Callbacks run on the game thread, in `pcall` (an error is logged with your mod id and does not stop the next callback), in registration order. `world` is a plain table that is yours to keep or change.
+
+```lua
+api.world.onEnter(function(world)
+  AF.log("world " .. world.title .. " -> " .. world.key)
+  -- load your per-world data here, from <AF.dataDir>\mymod-<world.key>.json
+end)
+```
+
+### `api.world.current()` returns `world` or `nil`
+
+A fresh copy of the current world, or `nil` at the main menu (and until a world is known). Safe to call at any time on the game thread, also from `build`.
+
+### The `world` table
+
+| Field | Meaning |
+|---|---|
+| `title` | `WorldTitleName` exactly as the game gives it (UTF-8), for example `Prueba_2609125624`. Show it to the player and store it inside your own data. |
+| `key` | `title` made safe for a file name: letters, digits, `_` and `-` are kept, every other byte becomes `~XX` (uppercase hex), so the key is always plain ASCII (Lua's `io.open` cannot open other paths). Over 48 characters it becomes the first 48, `-`, and 8 hex digits of the FNV-1a hash of the full title. The same title always gives the same key. |
+| `generation` | A whole number that is different for every enter, also when the same world is loaded again. |
+
+NTFS ignores case, so two titles that differ only by case would share a file. Store `title` inside your file and compare it when you read it.
+
+### Delayed work and the generation
+
+There is no way to cancel `ExecuteWithDelay`. A mod that schedules work for later must remember the generation and check it when the work runs, because the player may have gone to the menu or loaded another world in between. Run the work on the game thread: `ExecuteWithDelay` calls its function off the game thread, so hop back with `ExecuteInGameThread`.
+
+```lua
+api.world.onEnter(function(world)
+  local generation = world.generation
+  ExecuteWithDelay(5000, function()
+    ExecuteInGameThread(function()
+      local now = api.world.current()
+      if not now or now.generation ~= generation then
+        return -- the world changed: this work is stale
+      end
+      -- safe to touch the world's game objects here (still check them with IsValid)
+    end)
+  end)
+end)
+```
+
+### When `current()` changes
+
+`current()` changes only inside the API's own `InitGameState` hook, so right after a load it can lag a moment behind the game, and during a load it may still report the old world. Put world work in `onEnter`, not in your own `RegisterInitGameStatePostHook`, and check game objects with `IsValid`.
+
+After a UE4SS mods restart (Ctrl+R) the game does not start a new game state, so the API reads the loaded world once, about a second after it starts, and calls `onEnter` for it. A mod may also read `current()` when it needs it. The API never reports a world it could not read: at the main menu, or if the game's save state cannot be read, `current()` is `nil` and the log says why.
+
+Status: reading the world at `InitGameState` (menu, load, new game, back to the menu, another world, non-ASCII titles) was **verified in a probe** (2026-10-21, game 1.1.5023, see [world.md](world.md)). The API's own `onEnter` and `current()` are **not verified** in game yet, nor the read after a mods restart, multiplayer, sandbox worlds, or the order of callbacks between mods.
+
 ## Console
 
 ### `api.console.add(spec)` returns `true`, or `false` when refused
@@ -259,6 +315,8 @@ Status: **verified in game** with a throwaway mod (the console opens with both k
 | `RegisterInitGameStatePostHook` | Second trigger to turn the console on | verified in game: it turned the console on at the main menu |
 | `/Script/Engine.Console`, `GameViewport.ViewportConsole`, `InputSettings.ConsoleKeys` | The console | verified in game |
 | `RegisterConsoleCommandGlobalHandler` | Commands | verified in game |
+| `RegisterInitGameStatePostHook` and `FindFirstOf("GameSaveLoadSubsystem")` fields `IsPreviewScene` and `WorldTitleName` (`NewGameName`, `IsSandbox`, `NetSession` are only logged) | `api.world`: which world is loaded | fields verified in a probe (2026-10-21, game 1.1.5023); the API's use of them not verified |
+| `ExecuteWithDelay` then `ExecuteInGameThread` | Every delayed call in the API (retries, the read after install) | verified in a probe (2026-10-21) |
 | `LoopInGameThreadWithDelay` and `CancelDelayedAction`, or `LoopAsync` | Poll inputs for `onChange` | `LoopInGameThreadWithDelay` verified in game; `CancelDelayedAction` not verified |
 | `AF.onUnload` | Stops the input polling on unload. Removing our tabs is disabled (see "Restarting mods") | not verified (loader feature) |
 
