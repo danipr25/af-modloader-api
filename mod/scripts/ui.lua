@@ -76,6 +76,32 @@ function ui.construct(classPath, outer)
   return object
 end
 
+-- What a dead handle hands out: the same methods as a live one, doing nothing. Every dead path uses these, so a
+-- mod that keeps a handle too long never gets nil or a missing method.
+function ui.inertText()
+  return {
+    set = function() end,
+    color = function() end,
+  }
+end
+local inertText = ui.inertText
+
+function ui.inertButton()
+  return {
+    set = function() end,
+    enable = function() end,
+  }
+end
+local inertButton = ui.inertButton
+
+-- Checks one color channel (a number) and clamps it to 0-1.
+local function channel(value, name)
+  if type(value) ~= "number" or value ~= value then
+    error(string.format("text:color needs numbers from 0 to 1, but %s is %s", name, tostring(value)), 3)
+  end
+  return math.max(0, math.min(1, value))
+end
+
 function ui.playerController()
   local okHelpers, helpers = pcall(require, "UEHelpers")
   if okHelpers and type(helpers) == "table" and helpers.GetPlayerController then
@@ -124,15 +150,40 @@ function ui.newPage(ctx)
     end
   end
 
-  local function makeText(str, add, extraCheck)
+  local function makeText(str, add, extraCheck, wrap)
     local widget = ui.construct(CLASS.text, ctx.tree)
     widget:SetText(FText(tostring(str)))
+    if wrap then
+      local ok, problem = pcall(function()
+        widget:SetAutoWrapText(true)
+      end)
+      if not ok then
+        ctx.log(
+          string.format(
+            "mod %s: a text could not be set to wrap, a long line may run past the panel: %s",
+            ctx.owner,
+            tostring(problem)
+          )
+        )
+      end
+    end
     add(widget)
     local live = liveCheck(widget, "text", extraCheck)
     return {
       set = function(_, newText)
         if live() then
           widget:SetText(FText(tostring(newText)))
+        end
+      end,
+      -- r, g, b, a from 0 to 1 (a defaults to 1). The API builds the game's color struct itself.
+      color = function(_, r, g, b, a)
+        local red, green, blue = channel(r, "red"), channel(g, "green"), channel(b, "blue")
+        local alpha = 1
+        if a ~= nil then
+          alpha = channel(a, "alpha")
+        end
+        if live() then
+          widget:SetColorAndOpacity({ SpecifiedColor = { R = red, G = green, B = blue, A = alpha }, ColorUseRule = 0 })
         end
       end,
     }
@@ -160,7 +211,8 @@ function ui.newPage(ctx)
   end
 
   -- Registers a click callback for a widget. The callback runs in the router's pcall, never inside the hook's.
-  local function registerClick(widget, extraCheck, fn)
+  -- isDisabled (optional): function() -> true while the widget is disabled; its clicks are then not routed.
+  local function registerClick(widget, extraCheck, fn, isDisabled)
     local address = addressOf(widget)
     if address == nil then
       ctx.log(string.format("mod %s: a clickable widget has no address, so its clicks will not be noticed", ctx.owner))
@@ -172,6 +224,7 @@ function ui.newPage(ctx)
       alive = function()
         return aliveCheck(widget, extraCheck)
       end,
+      disabled = isDisabled,
       fn = fn,
     })
     return address
@@ -195,12 +248,39 @@ function ui.newPage(ctx)
     end
     button:SetButtonText(FText(label))
     hbox:AddChildToHorizontalBox(button)
-    registerClick(button, extraCheck, onClick)
+    local enabled = true
+    registerClick(button, extraCheck, onClick, function()
+      return not enabled
+    end)
     local live = liveCheck(button, "button", extraCheck)
     return {
       set = function(_, newLabel)
         if live() then
           button:SetButtonText(FText(tostring(newLabel)))
+        end
+      end,
+      -- A disabled button is grey and ignores clicks (SetIsEnabled, verified in game). Call it after the button
+      -- is in its row. The click router also skips a disabled button, in case the game still reports the click.
+      enable = function(_, on)
+        if type(on) ~= "boolean" then
+          error("button:enable needs true or false", 2)
+        end
+        if not live() then
+          return
+        end
+        enabled = on
+        local ok, problem = pcall(function()
+          button:SetIsEnabled(on)
+        end)
+        if not ok then
+          ctx.log(
+            string.format(
+              "mod %s: a button could not be %s: %s",
+              ctx.owner,
+              on and "enabled" or "disabled",
+              tostring(problem)
+            )
+          )
         end
       end,
     }
@@ -222,7 +302,7 @@ function ui.newPage(ctx)
     local row = {}
     function row.text(_, str)
       if not rowLive() then
-        return { set = function() end }
+        return inertText()
       end
       return makeText(str, function(widget)
         hbox:AddChildToHorizontalBox(widget)
@@ -236,7 +316,7 @@ function ui.newPage(ctx)
     if withButtons then
       function row.button(_, label, onClick)
         if not rowLive() then
-          return { set = function() end }
+          return inertButton()
         end
         return makeButton(hbox, label, onClick, extraCheck)
       end
@@ -246,17 +326,13 @@ function ui.newPage(ctx)
 
   -- What a dead page or list hands out: the same methods as a live row, doing nothing.
   local inertRow = {
-    text = function()
-      return { set = function() end }
-    end,
+    text = inertText,
     item = function() end,
   }
   local inertPageRow = {
-    text = inertRow.text,
+    text = inertText,
     item = inertRow.item,
-    button = function()
-      return { set = function() end }
-    end,
+    button = inertButton,
   }
   local pageWarned = false
   -- A page handle kept past the next build of its page does nothing (and says so once).
@@ -279,13 +355,17 @@ function ui.newPage(ctx)
 
   local page = {}
 
-  function page.text(_, str)
+  -- opts (optional): { wrap = true } makes a long line wrap at the panel's edge instead of running past it.
+  function page.text(_, str, opts)
     if not pageAlive() then
-      return { set = function() end }
+      return inertText()
+    end
+    if opts ~= nil and (type(opts) ~= "table" or (opts.wrap ~= nil and type(opts.wrap) ~= "boolean")) then
+      error("page:text takes an optional table { wrap = true or false }", 2)
     end
     return makeText(str, function(widget)
       ctx.root:AddChildToVerticalBox(widget)
-    end)
+    end, nil, opts and opts.wrap)
   end
 
   -- spec: { hint = text shown while empty, onChange = function(text) }

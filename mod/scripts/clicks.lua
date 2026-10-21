@@ -16,7 +16,8 @@ function clicks.new(log)
 end
 
 -- entry: { owner = mod id for logs, session = the page session it belongs to (or nil), alive = function() -> bool
---          (optional, false means the widget is gone), fn = function() the mod's callback }
+--          (optional, false means the widget is gone), disabled = function() -> bool (optional, true means the
+--          widget is disabled and its clicks are not routed), fn = function() the mod's callback }
 function Router:register(address, entry)
   if address ~= nil then
     self.entries[address] = entry
@@ -53,6 +54,9 @@ function Router:route(address, open)
   if entry.alive and not entry.alive() then
     self.entries[address] = nil
     return false
+  end
+  if entry.disabled and entry.disabled() then
+    return false -- a disabled button ignores clicks (the entry stays: it may be enabled again)
   end
   local ok, problem = xpcall(entry.fn, debug.traceback)
   if not ok then
