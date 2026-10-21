@@ -26,10 +26,13 @@ At every `InitGameState` the current world is cleared and an internal counter is
 
 After a UE4SS mods restart there is no `InitGameState` until the next load, so the API reads the subsystem once, about a second after it starts, and only enters (it never reports "no world" from that read). The read is skipped if a game state started in the meantime.
 
+## Verified with the API (2026-10-21)
+
+API 0.1.2 and the template, game 1.1.5023: main menu, world `Prueba_2609125624`, back to the menu, world `ñú_2610216118`, and both again. Every menu logged "no world loaded (main menu)"; every load logged one enter with a new generation (1 to 5) and the same key for the same world (`Prueba_2609125624`, `~C3~B1~C3~BA_2610216118`); the template's tab showed "World: <title>" each time, the non-ASCII title included.
+
 ## Not verified
 
 - The read after a UE4SS mods restart (Ctrl+R) inside a world: that it enters and the template then shows the title.
 - Multiplayer: what `NetSession` holds and what a client sees. Only logged.
 - Sandbox worlds: what `IsSandbox` and the title look like. Only logged.
 - The order in which several mods' `InitGameState` hooks run, so whether another mod's own hook sees the old or the new world through `api.world.current()`. Hence the advice to put world work in `onEnter`.
-- The API's own `onEnter`, `current()` and log lines in game (the facts above come from the probe, not from the API).
