@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "af-modloader-api",
+  "version": "0.1.0",
+  "name": "AF Mod Loader API",
+  "description": "Shared API for Alchemy Factory mods: TAB menu tabs, page widgets and console commands.",
+  "authors": ["af-modloader contributors"],
+  "license": "MIT",
+  "entrypoint": "scripts/main.lua",
+  "depends": { "af-modloader": ">=0.1.0 <0.2.0" }
+}

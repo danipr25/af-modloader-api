@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "my-mod",
+  "version": "0.1.0",
+  "name": "My Mod",
+  "description": "A starting point for an Alchemy Factory mod: one TAB menu tab and one console command.",
+  "authors": ["Your Name"],
+  "license": "MIT",
+  "entrypoint": "scripts/main.lua",
+  "depends": { "af-modloader": ">=0.1.0 <0.2.0", "af-modloader-api": ">=0.1.0 <0.2.0" }
+}

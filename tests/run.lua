@@ -1,6 +1,6 @@
 -- Runs every tests/test_*.lua file with LuaUnit. Usage: lua tests/run.lua (from the repository root)
 -- Each test file returns a table of test classes, for example { TestSmoke = { testSomething = function() end } }.
-package.path = "./tests/vendor/?.lua;./tests/?.lua;" .. package.path
+package.path = "./tests/vendor/?.lua;./tests/?.lua;./mod/scripts/?.lua;" .. package.path
 
 local lu = require("luaunit")
 
