@@ -70,7 +70,9 @@ local tab = api.tabs.add({
 
 Tabs appear after the game's own, in the order mods registered them (which follows the loader's load order). A duplicate id or title is refused with a log line naming both mods; you get a tab that does nothing so your mod keeps running. Invalid arguments raise an error.
 
-Status: **verified in game** for one tab (2026-10-21, game 1.1.5023): the tab is added on the first open, the highlighted tab is right, reopening adds nothing, `refresh()` from a console command rebuilds the page, and after loading another save the new menu gets the tab once. The group's `PreConstruct` hook fires before `BP_OnActivated`, and the tab is added from it. Several tabs and (disabled for now) removal when UE4SS restarts mods are **not verified**.
+Status: **verified in game** for one tab (2026-10-21, game 1.1.5023): the tab is added on the first open, the highlighted tab is right, reopening adds nothing, `refresh()` from a console command rebuilds the page, and after loading another save the new menu gets the tab once. The group's `PreConstruct` hook fires before `BP_OnActivated`, and the tab is added from it. Two tabs from two mods are **verified** too: each opens its own page and the game's pages stay right. After a UE4SS mods restart (Ctrl+R with `EnableHotReloadSystem = 1`) the old tabs stay but do nothing, the log says to load the save again, and after loading it the tabs work again, once each; no crash. Removal on restart stays disabled and **not verified**.
+
+Known limit: the game's tab bar has a fixed width. Four tabs fit; with five (two mods with a tab each) the last button is pushed out of line. Not handled yet.
 
 ### `tab:refresh()`
 
@@ -139,7 +141,7 @@ row:item("GentianNectar", 2)
 
 The API does not look up item names or recipes: that is the mod's job.
 
-Status: the item tile (`WBP_SimpleItemTile_C` with `UpdateItemInfo`) is **verified in game** with a count of 1, including its tooltip. The scrolling list, the rows, the fill-the-page setting that makes it scroll and counts other than 1 are **not verified**. Speed with a few hundred rows is to be measured.
+Status: the item tile (`WBP_SimpleItemTile_C` with `UpdateItemInfo`) is **verified in game** with a count of 1, including its tooltip. The scrolling list, its rows and the fill-the-page setting are **verified in game** too (2026-10-21): 300 rows of item tiles scroll smoothly, building them takes about 80 ms, and clearing and rebuilding the list on every filter change feels instant. How a count other than 1 is shown was not checked.
 
 ## Console
 

@@ -417,7 +417,7 @@ function Tabs:startPolling()
     self.stopPolling = stop
     if not self.loggedLoop then
       self.loggedLoop = true
-      self.log("input onChange is polled with " .. how .. " (unverified in game)")
+      self.log("input onChange is polled with " .. how)
     end
   elseif not self.loggedLoopFailure then
     self.loggedLoopFailure = true

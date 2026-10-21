@@ -58,4 +58,6 @@ Tested on game 1.1.5023 with UE4SS 1181 and a throwaway Lua mod loaded by AF Mod
 - Page widgets: plain UMG widgets (`VerticalBox`, `TextBlock`, `EditableTextBox`) created with `StaticConstructObject(class, panel.WidgetTree)`, and game user widgets created with `WidgetBlueprintLibrary:Create(panel, class, playerController)`, display correctly. Text typed in an `EditableTextBox` on the page reaches the box (the game does not take the keys as shortcuts).
 - `WBP_SimpleItemTile_C` (`/Game/Blueprints/WBP/...`, created with `Create`) shows an item icon after `UpdateItemInfo(FName(item), 1, 0, false)`, and its hover tooltip is the game's full item card (localized name, category, where it is crafted).
 
-Not tested yet: gamepad or keyboard navigation to the new tab, and what happens when a save is loaded again while the panel instance lives.
+Verified with the API on 2026-10-21: two added tabs work; loading another save gives a new panel instance that gets the tabs once; after a UE4SS mods restart the titles and pages stay in the live panel (the Lua state is gone, the widgets are not). The tab bar has a fixed width: with five tabs the last button is pushed out of line.
+
+Not tested yet: gamepad or keyboard navigation to the new tab.
