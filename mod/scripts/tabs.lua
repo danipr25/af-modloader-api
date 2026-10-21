@@ -3,6 +3,7 @@
 -- bar's TitleList, rebuild the bar with PreConstruct, add the page to the panel's WidgetSwitcher.
 -- The live panel is the source of truth: every call to ensure() reads it and plans from what it finds.
 -- Calls that docs/tab-menu.md does not cover are marked "unverified" and wrapped so a failure is logged, not fatal.
+local clicks = require("clicks")
 local hooks = require("hooks")
 local loop = require("loop")
 local plan = require("tabs_plan")
@@ -10,6 +11,9 @@ local ui = require("ui")
 
 local PANEL_CLASS = "/Game/Blueprints/WBP/PlayerGear/WBP_PlayerGearPanel.WBP_PlayerGearPanel_C"
 local GROUP_CLASS = "/Game/Blueprints/WBP/Utility/WBP_TagSwitcherGroup.WBP_TagSwitcherGroup_C"
+-- Click sources (docs/widgets.md, verified in game 2026-10-21 in a spike). The tile class is not loaded at start.
+local TILE_CLICK_HOOK = ui.CLASS.recipeTile .. ":OnMouseButtonDown"
+local BUTTON_CLICK_HOOK = "/Script/CommonUI.CommonButtonBase:HandleButtonClicked"
 local POLL_MS = 150
 local FAILED_PAGE_TEXT = "This page failed to load, see UE4SS.log"
 
@@ -26,12 +30,7 @@ local function paramValue(param)
   return ok and value or param
 end
 
-local function addressOf(object)
-  local ok, value = pcall(function()
-    return object:GetAddress()
-  end)
-  return ok and value or nil
-end
+local addressOf = ui.addressOf
 
 local function member(object, name)
   local ok, value = pcall(function()
@@ -154,6 +153,8 @@ function tabs.new(options)
   self.state = nil -- the current panel: { panel, address, tree, pages = { [tab key] = { entry, root, session } } }
   self.busy = false -- our own rebuild fires the hooks again
   self.gate = plan.newGate(options.log) -- refuses tab:refresh() while a page is being built
+  self.clicks = clicks.new(options.log) -- routes clicks on our buttons and tiles to the mods
+  self.tileHook = "none" -- "none", "requested" (handed to hooks.install), "scheduled" or "registered"
   self.disabled = false
   self.stopPolling = nil
   return self
@@ -188,6 +189,7 @@ function Tabs:stateFor(panel)
   if state then
     killSessions(state)
   end
+  self.clicks:reset()
   self.state = { panel = panel, address = address, pages = {} }
   return self.state
 end
@@ -197,12 +199,23 @@ function Tabs:fill(state, record)
   self.gate:run(function()
     if record.session then
       record.session.alive = false
+      self.clicks:dropSession(record.session)
     end
     pcall(function()
       record.root:ClearChildren()
     end)
     local owner = record.entry.owner
-    local ctx = { panel = state.panel, tree = state.tree, root = record.root, owner = owner, log = self.log }
+    local ctx = {
+      panel = state.panel,
+      tree = state.tree,
+      root = record.root,
+      owner = owner,
+      log = self.log,
+      clicks = self.clicks,
+      onTileCreated = function(class)
+        self:ensureTileHook(class)
+      end,
+    }
     local page, session = ui.newPage(ctx)
     record.session = session
     local ok, problem = xpcall(record.entry.build, debug.traceback, page)
@@ -211,6 +224,7 @@ function Tabs:fill(state, record)
         string.format('mod %s: the page of tab "%s" failed to build: %s', owner, record.entry.title, tostring(problem))
       )
       session.alive = false
+      self.clicks:dropSession(session)
       pcall(function()
         record.root:ClearChildren()
       end)
@@ -481,9 +495,67 @@ function Tabs:cleanup()
   end
 end
 
+-- A click on a tile or a button of the game. These hooks fire for every tile and every CommonUI button in the game,
+-- so anything that is not ours (or any click while the TAB menu is closed) returns at once, without a log line.
+function Tabs:routeClick(context)
+  local state = self.state
+  local open = state ~= nil and state.active == true and isValid(state.panel)
+  local address = open and addressOf(paramValue(context)) or nil
+  self.clicks:route(address, open)
+end
+
+-- Registers the tile click hook once the first tile exists (its class may not have been loaded before). Called
+-- after every tile creation with the tile's class: cheap once registered, and a failed registration is tried again
+-- at the next tile. The registration is deferred to the game thread, out of the page build.
+-- If the class was loaded again since the hook was registered (a different object, for example after a save
+-- load), the hook is registered again: a hook belongs to the class object it was put on.
+function Tabs:ensureTileHook(class)
+  local address = addressOf(class)
+  if self.tileHook == "scheduled" then
+    return
+  end
+  if self.tileHook ~= "none" then
+    if address == nil or address == self.tileHookClass then
+      return
+    end
+    self.log("the game loaded the tile class again: hooking tile clicks again")
+  end
+  self.tileHook = "scheduled"
+  self.tileHookClass = address
+  ExecuteInGameThread(function()
+    local ok, problem = pcall(RegisterHook, TILE_CLICK_HOOK, function(context)
+      self:routeClick(context)
+    end)
+    if ok then
+      self.tileHook = "registered"
+      self.log("tile clicks are on: hooked " .. TILE_CLICK_HOOK)
+    else
+      self.tileHook = "none"
+      self.tileHookClass = nil
+      if not self.loggedTileHookFailure then
+        self.loggedTileHookFailure = true
+        self.log(
+          "could not hook "
+            .. TILE_CLICK_HOOK
+            .. " ("
+            .. tostring(problem)
+            .. "). Clicks on tiles will not work until it succeeds; it is tried again the next time a tile is made."
+        )
+      end
+    end
+  end)
+end
+
 function Tabs:install()
   local registry = self.registry
-  hooks.install({
+  local entries = {
+    {
+      path = BUTTON_CLICK_HOOK,
+      effect = "Buttons added by mods will not react to clicks.",
+      fn = function(context)
+        self:routeClick(context)
+      end,
+    },
     {
       path = PANEL_CLASS .. ":BP_OnActivated",
       effect = "Tabs added by mods will not appear in the TAB menu.",
@@ -526,7 +598,26 @@ function Tabs:install()
         end
       end,
     },
-  }, self.log)
+  }
+  -- The tile class may already be loaded at start: then its hook is registered like the others, with retries.
+  -- Otherwise it waits for the first tile (ensureTileHook).
+  local okFind, tileClass = pcall(StaticFindObject, ui.CLASS.recipeTile)
+  if okFind and isValid(tileClass) then
+    self.tileHook = "requested"
+    self.tileHookClass = addressOf(tileClass)
+    entries[#entries + 1] = {
+      path = TILE_CLICK_HOOK,
+      effect = "Tiles added by mods will not react to clicks until the next tile is made, which tries again.",
+      onGiveUp = function()
+        self.tileHook = "none"
+        self.tileHookClass = nil
+      end,
+      fn = function(context)
+        self:routeClick(context)
+      end,
+    }
+  end
+  hooks.install(entries, self.log)
 end
 
 return tabs

@@ -1,6 +1,6 @@
 # API reference
 
-AF Mod Loader API 0.1.0 for mod authors. Game 1.1.5023, UE4SS 1181, AF Mod Loader 0.1.0.
+AF Mod Loader API 0.1.1 for mod authors. Game 1.1.5023, UE4SS 1181, AF Mod Loader 0.1.0.
 
 Each function says what is **verified in game** and what is **not verified yet**. Nothing marked "not verified" has run in the game: it is written from the UE4SS and Unreal Engine documentation, wrapped so that a failure is logged instead of crashing, and waits for the in-game test. Verified findings are recorded in [tab-menu.md](tab-menu.md) and [console.md](console.md).
 
@@ -14,7 +14,9 @@ The API is 0.x until 1.0. A patch version (0.1.1) fixes things or adds functions
 "depends": { "af-modloader": ">=0.1.0 <0.2.0", "af-modloader-api": ">=0.1.0 <0.2.0" }
 ```
 
-`api.version` is the installed version as text, like `"0.1.0"`.
+`api.version` is the installed version as text, like `"0.1.1"`.
+
+Raise the lower bound to the first version that has every call your mod uses. `page:row()`, `row:button`, `page:grid()` and clicks on tiles came with 0.1.1, so a mod that uses them depends on `"af-modloader-api": ">=0.1.1 <0.2.0"`. A mod that does not use them keeps working with `>=0.1.0`.
 
 ### Threads
 
@@ -22,13 +24,13 @@ The API is 0.x until 1.0. A patch version (0.1.1) fixes things or adds functions
 
 ### Handles and their lifetime
 
-`page` and everything made from it (text, input, list, row) are valid until the **next build of that page**, whether it comes from `tab:refresh()` or from the menu being created again. Keep a handle to change something later, for example `heading:set("...")`, but do not keep it across a refresh: use the new ones the next `build` receives.
+`page` and everything made from it (text, input, list, row, button, grid) are valid until the **next build of that page**, whether it comes from `tab:refresh()` or from the menu being created again. Keep a handle to change something later, for example `heading:set("...")`, but do not keep it across a refresh: use the new ones the next `build` receives.
 
 A handle that is no longer valid does nothing, and writes one line to `UE4SS.log` the first time it is used. It never raises an error.
 
 ### Callbacks never crash the game
 
-Every function a mod gives the API (`build`, `run`, `onChange`) runs in `pcall`. An error is written to `UE4SS.log` with the mod id and a stack trace. A `build` that fails leaves a page with the line "This page failed to load, see UE4SS.log". A command that fails answers "Command failed, see UE4SS.log" in the console.
+Every function a mod gives the API (`build`, `run`, `onChange`, click callbacks) runs in `pcall`. An error is written to `UE4SS.log` with the mod id and a stack trace. A `build` that fails leaves a page with the line "This page failed to load, see UE4SS.log". A command that fails answers "Command failed, see UE4SS.log" in the console.
 
 ### When to register
 
@@ -123,6 +125,55 @@ How `onChange` works: while the TAB menu is open, the API reads each such box ab
 
 Status: the box, typing in it, `onChange` and the polling (with `LoopInGameThreadWithDelay`) are **verified in game** (2026-10-21). `hint` and `get` are **not verified**. If `onChange` does not work in game, it is removed before 0.1.0 is released and mods use a search button instead.
 
+### `page:row()` returns `row`
+
+Adds a horizontal row on the page itself: things placed side by side.
+
+- `row:text(str)` adds text and returns a text handle (`:set`).
+- `row:item(itemName, count)` adds the game's item tile, like in a list row.
+- `row:button(label, onClick)` adds the game's button with `label` as its text and returns a button handle. `onClick()` is called when the player clicks it. `button:set(label)` changes the label.
+
+```lua
+local row = page:row()
+row:button("Previous", function() showPage(current - 1) end)
+row:button("Next", function() showPage(current + 1) end)
+```
+
+Buttons live in rows made with `page:row()`. List rows (`list:row()`) have no buttons.
+
+Status: `HorizontalBox` and the button (`WBP_ButtonBase_C` created with `Create`, label with `SetButtonText`) are **verified in game** in a spike (2026-10-21, see [widgets.md](widgets.md)). The API's own `row:button` and the click routing are **not verified** until the in-game test of 0.1.1.
+
+### `page:grid()` returns `grid`
+
+Adds a grid of item tiles that fills the rest of the page, wraps like text and scrolls, like the Recognition page (4 tiles per row in the TAB menu).
+
+- `grid:tile(itemName, spec)` adds a tile with the item's icon and the game's own tooltip. `itemName` is the item's name in the game's data. `spec` is optional: `onClick(itemName)` is called when the player clicks the tile. A tile without `onClick` is only shown. There is no count option: the game does not show a count on these tiles in the TAB menu. It returns nothing.
+- `grid:clear()` removes every tile. Tiles made before the call stop working, and their clicks are no longer reported.
+
+```lua
+local grid = page:grid()
+for _, name in ipairs({ "GentianNectar", "Wood" }) do
+  grid:tile(name, { onClick = function(clicked) heading:set("You clicked " .. clicked) end })
+end
+```
+
+A page that holds both a `grid` and a `list` is expected to split the height between them (not verified).
+
+Status: the grid (`WrapBox` in a `ScrollBox` that fills the page, 48 tiles, scrolling and tooltips) and the tile (`WBP_RecipeItemTile_C` with `UpdateItemInfo`) are **verified in game** in a spike (2026-10-21). `grid:clear()` (`WrapBox:ClearChildren`) and the API's own `grid:tile` are **not verified**. The tile class may not be loaded when the game starts (not verified: the in-game test will tell), so the API finds it with `StaticFindObject` and falls back to `LoadAsset`; the log says which one worked. If the game loads the class again later, the API hooks it again (not verified).
+
+### Clicks
+
+A click calls your function on the game thread, inside `pcall`, like `build` (an error is logged with your mod id). The callback may call `tab:refresh()`, because a click is not a build, or change the handles it has (`text:set`, `grid:clear()` and new tiles).
+
+Things to know:
+
+- Tiles are expected to react when the mouse button goes **down**, and to any mouse button, so a right click should select too (expected from the hook, not verified).
+- Clicks are only reported while the TAB menu is open. A click on a game tile or button the API did not create is ignored, with no log line.
+- After a page is rebuilt, or the menu is created again (for example after loading a save), the old widgets are gone and their clicks are no longer reported. Use the new handles.
+- The API registers one shared game hook for buttons and one for tiles, so several mods can use clicks without overwriting each other. The tile hook is registered when the first tile is made if the game has not loaded the tile class before.
+
+Status: **not verified** until the in-game test of 0.1.1. The click hooks and the widgets they listen to are verified in the spike; that the hooks fire for every tile and button of the game is assumed from the spike's logs.
+
 ### `page:list()` returns `list`
 
 Adds a scrolling list of rows.
@@ -197,6 +248,11 @@ Status: **verified in game** with a throwaway mod (the console opens with both k
 | `WBP_PlayerGearPanel_C:BP_OnActivated` and `BP_OnDeactivated` | Add tabs when the TAB menu opens; start and stop the input polling | hookable, verified in game |
 | `WBP_TagSwitcherGroup_C:PreConstruct` | Notice the tab bar being rebuilt by the game | hookable, verified in game |
 | `TagSwithcer.TitleList`, `EntryPanel:ClearChildren()`, `EntryList:Empty()`, `PreConstruct(false)`, `WidgetSwitcher_0:AddChild()` | The tab mechanism | verified in game |
+| `/Script/CommonUI.CommonButtonBase:HandleButtonClicked` | Clicks on buttons made by `row:button` (fires for every CommonUI button in the game; the API ignores the ones it did not create) | hookable and fires on a click, verified in a spike (2026-10-21) |
+| `WBP_RecipeItemTile_C:OnMouseButtonDown` (path in [widgets.md](widgets.md)) | Clicks on tiles made by `grid:tile` (fires on press, for any mouse button, for every such tile in the game) | hookable and fires on a click, verified in a spike (2026-10-21); registered when the first tile is made |
+| `WidgetBlueprintLibrary:Create`, `WBP_ButtonBase_C:SetButtonText`, `WBP_RecipeItemTile_C:UpdateItemInfo`, `WrapBox:AddChildToWrapBox` | Buttons, tiles and the grid | verified in a spike (2026-10-21) |
+| `LoadAsset` | Loads a game class (the tile) that is not loaded yet | not verified (the spike created the tile after loading it this way, but the in-game test of 0.1.1 will tell whether it is needed) |
+| `WrapBox:ClearChildren` | `grid:clear()` | not verified |
 | `WidgetSwitcher:GetChildIndex`, `GetChildAt`, `GetActiveWidgetIndex`, `SetActiveWidgetIndex`, widget `RemoveFromParent` | Check where our pages are, keep the highlight, clean up | not verified |
 | `FindAllOf`, `GetOuter` | Fallback lookup of the tab bar if the member names change | not verified |
 | `/Script/Engine.PlayerController:ClientRestart` | Turn the console on | hook registers; firing not verified |

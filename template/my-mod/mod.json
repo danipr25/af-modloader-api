@@ -7,5 +7,5 @@
   "authors": ["Your Name"],
   "license": "MIT",
   "entrypoint": "scripts/main.lua",
-  "depends": { "af-modloader": ">=0.1.0 <0.2.0", "af-modloader-api": ">=0.1.0 <0.2.0" }
+  "depends": { "af-modloader": ">=0.1.0 <0.2.0", "af-modloader-api": ">=0.1.1 <0.2.0" }
 }

@@ -76,13 +76,14 @@ return {
       local s = setup()
       s.exports["af-modloader-api"] = loadMod("mod", s.newAF("af-modloader-api", {}), s.stubs)
       local api = s.exports["af-modloader-api"]
-      lu.assertEquals(api.version, "0.1.0")
+      lu.assertEquals(api.version, "0.1.1")
 
       -- The API hooks the game and registers af.help (and its uppercase alias).
       lu.assertNotNil(s.hooks["/Script/Engine.PlayerController:ClientRestart"])
       lu.assertNotNil(
         s.hooks["/Game/Blueprints/WBP/PlayerGear/WBP_PlayerGearPanel.WBP_PlayerGearPanel_C:BP_OnActivated"]
       )
+      lu.assertNotNil(s.hooks["/Script/CommonUI.CommonButtonBase:HandleButtonClicked"])
       lu.assertNotNil(s.handlers["af.help"])
       lu.assertNotNil(s.handlers["AF.HELP"])
       lu.assertEquals(#s.unload, 1)
@@ -111,9 +112,10 @@ return {
       lu.assertEquals(modJson:match('"version": "([^"]+)"'), version)
       lu.assertEquals(modJson:match('"id": "([^"]+)"'), "af-modloader-api")
       -- The template depends on this 0.x line of the API: >=0.N.0 <0.(N+1).0.
-      local major, minor = version:match("^(%d+)%.(%d+)%.")
-      local range = ">=" .. major .. "." .. minor .. ".0 <" .. major .. "." .. (tonumber(minor) + 1) .. ".0"
-      lu.assertStrContains(template, '"af-modloader-api": "' .. range .. '"')
+      -- The template depends on this 0.x line of the API, from 0.1.1 on (the version that added rows, buttons and
+      -- grids, which the template uses). Raise this literal only when the template needs a newer call.
+      lu.assertEquals(version:match("^0%.1%."), "0.1.")
+      lu.assertStrContains(template, '"af-modloader-api": ">=0.1.1 <0.2.0"')
     end,
   },
 }

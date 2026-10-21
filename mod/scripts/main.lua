@@ -6,7 +6,7 @@ local console = require("console")
 local registry = require("registry")
 local tabs = require("tabs")
 
-local VERSION = "0.1.0"
+local VERSION = "0.1.1"
 
 local reg = registry.new({ selfId = AF.modId, version = VERSION, log = AF.log })
 local dispatcher = commands.new(reg, AF.log)

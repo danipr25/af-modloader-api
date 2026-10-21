@@ -13,6 +13,7 @@ local mod_globals = {
   "FindFirstOf",
   "FindAllOf",
   "StaticFindObject",
+  "LoadAsset",
   "StaticConstructObject",
   "RegisterHook",
   "RegisterConsoleCommandGlobalHandler",
