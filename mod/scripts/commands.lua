@@ -71,6 +71,7 @@ function Dispatcher:dispatch(typed, params, device)
     return true
   end
 
+  self.log(string.format("console: running %s (mod %s)", entry.name, entry.owner))
   local alive = true
   local function out(text)
     if alive then

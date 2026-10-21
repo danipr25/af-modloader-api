@@ -52,3 +52,7 @@ SOFTWARE.
 ```
 
 The notice above is the text of the `LICENSE` file shipped with UE4SS 3.0.1; it is also in the header of `mod/scripts/console.lua`.
+
+## Seeing the output
+
+Pressing the console key once opens a one-line bar that shows what you type but not the answers. Pressing it twice opens the full console, where command output (`outputDevice:Log`) appears. Verified in game 2026-10-21 with the API's `af.help` and the template's `mymod.hello`.

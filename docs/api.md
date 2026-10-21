@@ -70,7 +70,7 @@ local tab = api.tabs.add({
 
 Tabs appear after the game's own, in the order mods registered them (which follows the loader's load order). A duplicate id or title is refused with a log line naming both mods; you get a tab that does nothing so your mod keeps running. Invalid arguments raise an error.
 
-Status: the mechanism (append the title, rebuild the tab bar, add the page) is **verified in game** for one tab. Several tabs, the order in which the game's hooks fire, the highlighted tab after the rebuild and (disabled for now) removal when UE4SS restarts mods are **not verified**.
+Status: **verified in game** for one tab (2026-10-21, game 1.1.5023): the tab is added on the first open, the highlighted tab is right, reopening adds nothing, `refresh()` from a console command rebuilds the page, and after loading another save the new menu gets the tab once. The group's `PreConstruct` hook fires before `BP_OnActivated`, and the tab is added from it. Several tabs and (disabled for now) removal when UE4SS restarts mods are **not verified**.
 
 ### `tab:refresh()`
 
@@ -119,7 +119,7 @@ local box = page:input({
 
 How `onChange` works: while the TAB menu is open, the API reads each such box about every 150 ms and calls `onChange` once for each change, so it may arrive up to 150 ms late and intermediate texts can be skipped.
 
-Status: the box itself and typing in it are **verified in game**. `hint`, `get`, `onChange` and the polling are **not verified**. If `onChange` does not work in game, it is removed before 0.1.0 is released and mods use a search button instead.
+Status: the box, typing in it, `onChange` and the polling (with `LoopInGameThreadWithDelay`) are **verified in game** (2026-10-21). `hint` and `get` are **not verified**. If `onChange` does not work in game, it is removed before 0.1.0 is released and mods use a search button instead.
 
 ### `page:list()` returns `list`
 
@@ -168,7 +168,7 @@ The console is case-sensitive. Typing the all-uppercase form (`RECIPES.UNLOCKALL
 
 `args` holds the words after the command; double quotes group words (`recipes.find "gentian nectar"` is one argument). `out(text)` writes a line to the console only while `run` is executing. A later call goes to `UE4SS.log` with a note. A command that must ask for confirmation does that itself.
 
-Status: registering a command, dots in names, parameters and `out` are **verified in game** (see [console.md](console.md)). The dispatching on top of them and the uppercase answer are **not verified**.
+Status: **verified in game** (2026-10-21): commands with and without parameters, `af.help` and the uppercase answer. Output shows in the full console (press the key twice), not in the one-line bar.
 
 ### `af.help`
 
@@ -186,7 +186,7 @@ A player who does not want that creates the file `<game folder>\mods\.data\af-mo
 
 Then the console stays off, and commands from mods cannot be used. A missing file means "on". An unreadable file is ignored, which also means "on", and the log says why. `UE4SS.log` always states which mods asked for the console and whether it was turned on. See [console.md](console.md) for how it works.
 
-Status: **verified in game** with a throwaway mod (the console opens with both keys). The decision logic, the opt-out file and the timing (decided at the first player restart after every mod has loaded) are **not verified**.
+Status: **verified in game** with a throwaway mod (the console opens with both keys). Verified with the API (2026-10-21): the console was turned on at the first game state (main menu) and worked after loading a save. The opt-out file is **not verified**.
 
 ## Game hooks used
 
@@ -198,10 +198,10 @@ Status: **verified in game** with a throwaway mod (the console opens with both k
 | `WidgetSwitcher:GetChildIndex`, `GetChildAt`, `GetActiveWidgetIndex`, `SetActiveWidgetIndex`, widget `RemoveFromParent` | Check where our pages are, keep the highlight, clean up | not verified |
 | `FindAllOf`, `GetOuter` | Fallback lookup of the tab bar if the member names change | not verified |
 | `/Script/Engine.PlayerController:ClientRestart` | Turn the console on | hook registers; firing not verified |
-| `RegisterInitGameStatePostHook` | Second trigger to turn the console on | fires, verified by the loader |
+| `RegisterInitGameStatePostHook` | Second trigger to turn the console on | verified in game: it turned the console on at the main menu |
 | `/Script/Engine.Console`, `GameViewport.ViewportConsole`, `InputSettings.ConsoleKeys` | The console | verified in game |
 | `RegisterConsoleCommandGlobalHandler` | Commands | verified in game |
-| `LoopInGameThreadWithDelay` and `CancelDelayedAction`, or `LoopAsync` | Poll inputs for `onChange` | not verified |
+| `LoopInGameThreadWithDelay` and `CancelDelayedAction`, or `LoopAsync` | Poll inputs for `onChange` | `LoopInGameThreadWithDelay` verified in game; `CancelDelayedAction` not verified |
 | `AF.onUnload` | Stops the input polling on unload. Removing our tabs is disabled (see "Restarting mods") | not verified (loader feature) |
 
 ## Credits
