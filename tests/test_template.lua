@@ -27,17 +27,21 @@ end
 
 local function setup()
   local logs, hooks, handlers, unload = {}, {}, {}, {}
+  local initHooks = {}
   local exports = {}
   local stubs = {
     RegisterHook = function(path, fn)
       hooks[path] = fn
     end,
-    RegisterInitGameStatePostHook = function() end,
+    RegisterInitGameStatePostHook = function(fn)
+      initHooks[#initHooks + 1] = fn
+    end,
     RegisterConsoleCommandGlobalHandler = function(name, fn)
       handlers[name] = fn
     end,
     ExecuteWithDelay = function() end,
     ExecuteInGameThread = function() end,
+    FindFirstOf = function() end, -- no GameSaveLoadSubsystem: the world is nil
   }
   for name, value in pairs(_G) do
     stubs[name] = stubs[name] or value
@@ -64,6 +68,7 @@ local function setup()
     hooks = hooks,
     handlers = handlers,
     unload = unload,
+    initHooks = initHooks,
     exports = exports,
     stubs = stubs,
     newAF = newAF,
@@ -76,7 +81,7 @@ return {
       local s = setup()
       s.exports["af-modloader-api"] = loadMod("mod", s.newAF("af-modloader-api", {}), s.stubs)
       local api = s.exports["af-modloader-api"]
-      lu.assertEquals(api.version, "0.1.1")
+      lu.assertEquals(api.version, "0.1.2")
 
       -- The API hooks the game and registers af.help (and its uppercase alias).
       lu.assertNotNil(s.hooks["/Script/Engine.PlayerController:ClientRestart"])
@@ -87,6 +92,7 @@ return {
       lu.assertNotNil(s.handlers["af.help"])
       lu.assertNotNil(s.handlers["AF.HELP"])
       lu.assertEquals(#s.unload, 1)
+      lu.assertEquals(#s.initHooks, 2) -- the console trigger and the world
 
       local depends = { ["af-modloader-api"] = true }
       loadMod("template/my-mod", s.newAF("my-mod", depends), s.stubs)
@@ -104,6 +110,36 @@ return {
       lu.assertFalse(s.handlers["mymod.hello"]("other.command", {}, device)) -- not its name: not handled
     end,
 
+    testWorldReachesModsThroughTheRealApi = function()
+      local s = setup()
+      local subsystem = {
+        IsPreviewScene = false,
+        WorldTitleName = "My World_1",
+        IsValid = function()
+          return true
+        end,
+        GetFullName = function()
+          return "GameSaveLoadSubsystem /Engine/Transient.GameInstance_0:GameSaveLoadSubsystem_0"
+        end,
+      }
+      s.stubs.FindFirstOf = function()
+        return subsystem
+      end
+      s.exports["af-modloader-api"] = loadMod("mod", s.newAF("af-modloader-api", {}), s.stubs)
+      local api = s.exports["af-modloader-api"].use(s.newAF("my-mod", { ["af-modloader-api"] = true }))
+      lu.assertNil(api.world.current())
+      local entered
+      -- Registered in the entrypoint (before any game state), like a real mod does.
+      s.exports["af-modloader-api"].use(s.newAF("other-mod", {})).world.onEnter(function(world)
+        entered = world
+      end)
+      for _, hook in ipairs(s.initHooks) do
+        hook()
+      end
+      lu.assertEquals(api.world.current(), { title = "My World_1", key = "My~20World_1", generation = 1 })
+      lu.assertEquals(entered, api.world.current())
+    end,
+
     testVersionsAgree = function()
       local main = readFile("mod/scripts/main.lua")
       local modJson = readFile("mod/mod.json")
@@ -112,10 +148,10 @@ return {
       lu.assertEquals(modJson:match('"version": "([^"]+)"'), version)
       lu.assertEquals(modJson:match('"id": "([^"]+)"'), "af-modloader-api")
       -- The template depends on this 0.x line of the API: >=0.N.0 <0.(N+1).0.
-      -- The template depends on this 0.x line of the API, from 0.1.1 on (the version that added rows, buttons and
-      -- grids, which the template uses). Raise this literal only when the template needs a newer call.
+      -- The template depends on this 0.x line of the API, from 0.1.2 on (the version that added api.world, which
+      -- the template uses). Raise this literal only when the template needs a newer call.
       lu.assertEquals(version:match("^0%.1%."), "0.1.")
-      lu.assertStrContains(template, '"af-modloader-api": ">=0.1.1 <0.2.0"')
+      lu.assertStrContains(template, '"af-modloader-api": ">=0.1.2 <0.2.0"')
     end,
   },
 }

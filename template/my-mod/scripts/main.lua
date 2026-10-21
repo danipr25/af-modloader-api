@@ -18,6 +18,11 @@ tab = api.tabs.add({
   build = function(page)
     local heading = page:text(message)
 
+    -- The world that is loaded now (the player's save), or nil at the main menu. The page is built when the menu
+    -- opens, so this is always current.
+    local world = api.world.current()
+    page:text(world and ("World: " .. world.title) or "No world loaded")
+
     page:input({
       hint = "Type something",
       onChange = function(text)
@@ -56,6 +61,13 @@ tab = api.tabs.add({
     listRow:item("GentianNectar", 1)
   end,
 })
+
+-- Runs on the game thread each time a world is loaded and its name is known. Like tabs, it can only be added here.
+-- world.key is safe to use in a file name, and world.generation is different for every load: delayed work should
+-- remember it and stop when api.world.current() is nil or has another generation (see docs/api.md).
+api.world.onEnter(function(world)
+  AF.log("My Mod: world loaded: " .. world.title .. " (key " .. world.key .. ")")
+end)
 
 -- Console commands: lowercase "<namespace>.<name>", with a namespace of at least three characters.
 -- The first command added turns the in-game console on (F10), unless the player opted out.

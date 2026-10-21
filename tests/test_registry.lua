@@ -59,6 +59,42 @@ return {
     end,
   },
 
+  TestWorld = {
+    testOnEnterKeepsRegistrationOrderAndOwner = function()
+      local reg = newRegistry()
+      local a, b = reg:use(fakeAF("mod-a")), reg:use(fakeAF("mod-b"))
+      local function first() end
+      local function second() end
+      a.world.onEnter(first)
+      b.world.onEnter(second)
+      local list = reg:worldCallbacks()
+      lu.assertEquals({ list[1].owner, list[2].owner }, { "mod-a", "mod-b" })
+      lu.assertIs(list[1].fn, first)
+      lu.assertIs(list[2].fn, second)
+    end,
+
+    testOnEnterNeedsAFunctionAndIsSealed = function()
+      local reg = newRegistry()
+      local api = reg:use(fakeAF("recipes"))
+      lu.assertErrorMsgContains("needs a function", api.world.onEnter, "nope")
+      reg:seal()
+      lu.assertErrorMsgContains("entrypoint", api.world.onEnter, function() end)
+    end,
+
+    testCurrentIsNilUntilTheGameSideProvidesIt = function()
+      local reg = newRegistry()
+      local api = reg:use(fakeAF("recipes"))
+      lu.assertNil(api.world.current())
+      reg.worldCurrent = function()
+        return { title = "A_1", key = "A_1", generation = 1 }
+      end
+      lu.assertEquals(api.world.current(), { title = "A_1", key = "A_1", generation = 1 })
+      lu.assertErrorMsgContains("read-only", function()
+        api.world.current = nil
+      end)
+    end,
+  },
+
   TestCommandNames = {
     testValidAndInvalidNames = function()
       local cases = {
