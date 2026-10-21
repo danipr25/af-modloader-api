@@ -141,7 +141,7 @@ row:button("Next", function() showPage(current + 1) end)
 
 Buttons live in rows made with `page:row()`. List rows (`list:row()`) have no buttons.
 
-Status: `HorizontalBox` and the button (`WBP_ButtonBase_C` created with `Create`, label with `SetButtonText`) are **verified in game** in a spike (2026-10-21, see [widgets.md](widgets.md)). The API's own `row:button` and the click routing are **not verified** until the in-game test of 0.1.1.
+Status: `HorizontalBox` and the button (`WBP_ButtonBase_C` created with `Create`, label with `SetButtonText`) are **verified in game** in a spike (2026-10-21, see [widgets.md](widgets.md)). The API's own `row:button`, with a click that calls `tab:refresh()`, is **verified in game** too (2026-10-21, API 0.1.1): one effect per click, also after many fast clicks.
 
 ### `page:grid()` returns `grid`
 
@@ -159,7 +159,7 @@ end
 
 A page that holds both a `grid` and a `list` is expected to split the height between them (not verified).
 
-Status: the grid (`WrapBox` in a `ScrollBox` that fills the page, 48 tiles, scrolling and tooltips) and the tile (`WBP_RecipeItemTile_C` with `UpdateItemInfo`) are **verified in game** in a spike (2026-10-21). `grid:clear()` (`WrapBox:ClearChildren`) and the API's own `grid:tile` are **not verified**. The tile class may not be loaded when the game starts (not verified: the in-game test will tell), so the API finds it with `StaticFindObject` and falls back to `LoadAsset`; the log says which one worked. If the game loads the class again later, the API hooks it again (not verified).
+Status: the grid (`WrapBox` in a `ScrollBox` that fills the page, 48 tiles, scrolling and tooltips) and the tile (`WBP_RecipeItemTile_C` with `UpdateItemInfo`) are **verified in game** in a spike (2026-10-21). The API's own `grid:tile` and `grid:clear()` (`WrapBox:ClearChildren`), with a tile click that clears and refills the grid, are **verified in game** too (2026-10-21, API 0.1.1): the right tile is reported, one effect per click, also with fast double clicks. In game 1.1.5023 the tile class was already loaded when the API looked for it, before any cauldron panel was opened. The API still falls back to `LoadAsset` if it is not, and hooks the class again if the game ever loads it again; both paths are **not verified** (not needed so far).
 
 ### Clicks
 
@@ -172,7 +172,7 @@ Things to know:
 - After a page is rebuilt, or the menu is created again (for example after loading a save), the old widgets are gone and their clicks are no longer reported. Use the new handles.
 - The API registers one shared game hook for buttons and one for tiles, so several mods can use clicks without overwriting each other. The tile hook is registered when the first tile is made if the game has not loaded the tile class before.
 
-Status: **not verified** until the in-game test of 0.1.1. The click hooks and the widgets they listen to are verified in the spike; that the hooks fire for every tile and button of the game is assumed from the spike's logs.
+Status: **verified in game** (2026-10-21, API 0.1.1): clicks on two different tiles and on a button reach the right callback once; clicking the game's own tiles and buttons (inventory, build menu, other TAB pages) has no effect on mods; clicks keep working after loading another save and after a UE4SS mods restart (Ctrl+R) followed by loading the save, with one effect per click.
 
 ### `page:list()` returns `list`
 
@@ -251,8 +251,8 @@ Status: **verified in game** with a throwaway mod (the console opens with both k
 | `/Script/CommonUI.CommonButtonBase:HandleButtonClicked` | Clicks on buttons made by `row:button` (fires for every CommonUI button in the game; the API ignores the ones it did not create) | hookable and fires on a click, verified in a spike (2026-10-21) |
 | `WBP_RecipeItemTile_C:OnMouseButtonDown` (path in [widgets.md](widgets.md)) | Clicks on tiles made by `grid:tile` (fires on press, for any mouse button, for every such tile in the game) | hookable and fires on a click, verified in a spike (2026-10-21); registered when the first tile is made |
 | `WidgetBlueprintLibrary:Create`, `WBP_ButtonBase_C:SetButtonText`, `WBP_RecipeItemTile_C:UpdateItemInfo`, `WrapBox:AddChildToWrapBox` | Buttons, tiles and the grid | verified in a spike (2026-10-21) |
-| `LoadAsset` | Loads a game class (the tile) that is not loaded yet | not verified (the spike created the tile after loading it this way, but the in-game test of 0.1.1 will tell whether it is needed) |
-| `WrapBox:ClearChildren` | `grid:clear()` | not verified |
+| `LoadAsset` | Loads a game class (the tile) if it is not loaded yet | not verified; not needed in game 1.1.5023 (the class was already loaded) |
+| `WrapBox:ClearChildren` | `grid:clear()` | verified in game (API 0.1.1) |
 | `WidgetSwitcher:GetChildIndex`, `GetChildAt`, `GetActiveWidgetIndex`, `SetActiveWidgetIndex`, widget `RemoveFromParent` | Check where our pages are, keep the highlight, clean up | not verified |
 | `FindAllOf`, `GetOuter` | Fallback lookup of the tab bar if the member names change | not verified |
 | `/Script/Engine.PlayerController:ClientRestart` | Turn the console on | hook registers; firing not verified |
