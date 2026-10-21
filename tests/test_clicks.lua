@@ -116,6 +116,25 @@ return {
       lu.assertEquals(calls, 0)
     end,
 
+    testDisabledButtonDoesNotRouteUntilEnabledAgain = function()
+      local router = newRouter()
+      local disabled, calls = true, 0
+      router:register("0x1", {
+        owner = "a",
+        disabled = function()
+          return disabled
+        end,
+        fn = function()
+          calls = calls + 1
+        end,
+      })
+      lu.assertFalse(router:route("0x1", true))
+      lu.assertEquals(calls, 0)
+      disabled = false
+      lu.assertTrue(router:route("0x1", true))
+      lu.assertEquals(calls, 1)
+    end,
+
     testErrorInCallbackIsContainedAndLoggedWithModId = function()
       local router, logs = newRouter()
       router:register("0x1", {

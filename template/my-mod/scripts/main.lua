@@ -1,6 +1,6 @@
 -- My Mod: a starting point. Copy this folder, rename it, and change "id" and "name" in mod.json.
--- It adds one tab to the TAB menu (a text box, a button, a grid of clickable item tiles and a list) and one console
--- command. See docs/api.md in af-modloader-api for everything the API offers.
+-- It adds one tab to the TAB menu (colored and wrapped text, a text box, buttons, a grid of clickable item tiles
+-- and a list) and one console command. See docs/api.md in af-modloader-api for everything the API offers.
 
 local api = AF.require("af-modloader-api").use(AF)
 
@@ -16,7 +16,12 @@ tab = api.tabs.add({
   -- build runs on the game thread when the TAB menu is first opened, and again on tab:refresh().
   -- The page and everything created from it are only valid until the next build.
   build = function(page)
+    -- Colors are numbers from 0 to 1 (r, g, b, a). A gold heading:
     local heading = page:text(message)
+    heading:color(1.0, 0.75, 0.2, 1.0)
+
+    -- A long line wraps at the panel's edge with { wrap = true }. Without it the line runs past the edge.
+    page:text("A long line of text wraps inside the panel instead of running past its edge.", { wrap = true })
 
     -- The world that is loaded now (the player's save), or nil at the main menu. The page is built when the menu
     -- opens, so this is always current.
@@ -37,6 +42,19 @@ tab = api.tabs.add({
       presses = presses + 1
       message = "Button pressed " .. presses .. " times"
       tab:refresh() -- a click may rebuild the page: build runs again and shows the new message
+    end)
+
+    -- A disabled button is grey and ignores clicks. Call enable() after the button is in its row, and keep the
+    -- handle to enable it later. Texts in a row can be colored too.
+    local lockedRow = page:row()
+    lockedRow:text("Locked: "):color(0.7, 0.7, 0.7, 1.0)
+    local locked = lockedRow:button("Locked", function()
+      message = "The unlocked button was clicked"
+      heading:set(message)
+    end)
+    locked:enable(false)
+    lockedRow:button("Unlock", function()
+      locked:enable(true)
     end)
 
     -- A grid of item tiles that scrolls. Clicking a tile calls onClick with the item name.
