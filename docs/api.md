@@ -315,7 +315,7 @@ Status: **verified in game** with a throwaway mod (the console opens with both k
 | `LoadAsset` | Loads a game class (the tile) if it is not loaded yet | not verified; not needed in game 1.1.5023 (the class was already loaded) |
 | `WrapBox:ClearChildren` | `grid:clear()` | verified in game (API 0.1.1) |
 | `WBP_ButtonBase_C:SetIsEnabled` | `button:enable(on)` | verified in a probe (2026-10-21): grey, clicks ignored |
-| `TextBlock:SetColorAndOpacity` | `text:color(r, g, b, a)` | verified in a probe for page texts (2026-10-21); row and list texts not verified |
+| `TextBlock:SetColorAndOpacity` | `text:color(r, g, b, a)` | verified on page and row texts (2026-10-21); list texts not verified |
 | `TextBlock:SetAutoWrapText` | `page:text(str, { wrap = true })` | verified in a probe (2026-10-21) |
 | `WidgetSwitcher:GetChildIndex`, `GetChildAt`, `GetActiveWidgetIndex`, `SetActiveWidgetIndex`, widget `RemoveFromParent` | Check where our pages are, keep the highlight, clean up | not verified |
 | `FindAllOf`, `GetOuter` | Fallback lookup of the tab bar if the member names change | not verified |
