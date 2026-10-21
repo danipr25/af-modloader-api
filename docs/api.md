@@ -99,9 +99,9 @@ All of them are created inside `build(page)`. You never touch the game's UI clas
 
 ### `page:text(str, opts)` returns `text`
 
-Adds a line of text. `text:set(str)` changes it. `text:color(r, g, b, a)` changes its color: each value is a number from 0 to 1 (a value outside that range is clamped, anything that is not a number is an error), and `a` is optional (default 1). The API builds the color for the game itself, so mods only pass numbers. Texts made by `row:text` and by list rows have `color` too.
+Adds a line of text. `text:set(str)` changes it. `text:color(r, g, b, a)` changes its color: each value is a number from 0 to 1 (a value outside that range is clamped, anything that is not a number is an error, handles past their page do nothing), and `a` is optional (default 1). The API builds the color for the game itself, so mods only pass numbers. Texts made by `row:text` and by list rows have `color` too.
 
-`opts` is optional: `{ wrap = true }` makes a long line wrap at the panel's edge. Without it the line runs past the edge, as before. `opts` must be nil or a table whose `wrap` is a boolean, otherwise it is an error. Wrapping is only offered for texts made by `page:text` (rows are horizontal, so wrapping there is not verified).
+`opts` is optional: `{ wrap = true }` makes a long line wrap at the panel's edge. Without it the line runs past the edge, as before. `opts` must be nil or a table whose `wrap` is a boolean, otherwise it is an error (handles past their page do nothing). Wrapping is only offered for texts made by `page:text` (rows are horizontal, so wrapping there is not verified).
 
 ```lua
 local heading = page:text("Recipes")
@@ -110,7 +110,7 @@ heading:color(1.0, 0.75, 0.2, 1.0) -- gold
 page:text("A long explanation that should stay inside the panel.", { wrap = true })
 ```
 
-Status: the text (a `TextBlock`) is **verified in game**. `color` (`SetColorAndOpacity`) is **verified in game for page texts only**, with a gold heading in a probe (2026-10-21, game 1.1.5023); on row and list texts it is **not verified** until the in-game test of the template. `wrap` (`SetAutoWrapText(true)`) is **verified in game** in the same probe: the line wraps at the panel's edge.
+Status: the text (a `TextBlock`) is **verified in game**. `color` (`SetColorAndOpacity`) is **verified in game for page texts only**, with a gold heading in a probe (2026-10-21, game 1.1.5023); on row and list texts it is **not verified** until the in-game test of the template. `wrap` (`SetAutoWrapText(true)`) is **verified in game** in the same probe: the line wraps at the panel's edge. Both were verified when set on a text already shown; setting them at build time, as the template does, is checked by the template's in-game test.
 
 ### `page:input(spec)` returns `input`
 
@@ -135,7 +135,7 @@ Adds a horizontal row on the page itself: things placed side by side.
 
 - `row:text(str)` adds text and returns a text handle (`:set`).
 - `row:item(itemName, count)` adds the game's item tile, like in a list row.
-- `row:button(label, onClick)` adds the game's button with `label` as its text and returns a button handle. `onClick()` is called when the player clicks it. `button:set(label)` changes the label. `button:enable(on)` enables (`true`) or disables (`false`) it: a disabled button is grey and ignores clicks. `on` must be a boolean, otherwise it is an error. Buttons start enabled; call `enable(false)` right after adding the button to its row, and keep the handle to enable it again later.
+- `row:button(label, onClick)` adds the game's button with `label` as its text and returns a button handle. `onClick()` is called when the player clicks it. `button:set(label)` changes the label. `button:enable(on)` enables (`true`) or disables (`false`) it: a disabled button is grey and ignores clicks. `on` must be a boolean, otherwise it is an error (handles past their page do nothing). Buttons start enabled; call `enable(false)` right after adding the button to its row, and keep the handle to enable it again later.
 
 ```lua
 local row = page:row()

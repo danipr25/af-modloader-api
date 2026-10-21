@@ -99,7 +99,7 @@ local function channel(value, name)
   if type(value) ~= "number" or value ~= value then
     error(string.format("text:color needs numbers from 0 to 1, but %s is %s", name, tostring(value)), 3)
   end
-  return math.max(0, math.min(1, value))
+  return math.max(0.0, math.min(1.0, value)) + 0.0
 end
 
 function ui.playerController()
@@ -178,12 +178,17 @@ function ui.newPage(ctx)
       -- r, g, b, a from 0 to 1 (a defaults to 1). The API builds the game's color struct itself.
       color = function(_, r, g, b, a)
         local red, green, blue = channel(r, "red"), channel(g, "green"), channel(b, "blue")
-        local alpha = 1
+        local alpha = 1.0
         if a ~= nil then
           alpha = channel(a, "alpha")
         end
         if live() then
-          widget:SetColorAndOpacity({ SpecifiedColor = { R = red, G = green, B = blue, A = alpha }, ColorUseRule = 0 })
+          local ok, problem = pcall(function()
+            widget:SetColorAndOpacity({ SpecifiedColor = { R = red, G = green, B = blue, A = alpha }, ColorUseRule = 0 })
+          end)
+          if not ok then
+            ctx.log(string.format("mod %s: a text color could not be set: %s", ctx.owner, tostring(problem)))
+          end
         end
       end,
     }
@@ -275,10 +280,11 @@ function ui.newPage(ctx)
         if not ok then
           ctx.log(
             string.format(
-              "mod %s: a button could not be %s: %s",
+              "mod %s: a button could not be %s: %s%s",
               ctx.owner,
               on and "enabled" or "disabled",
-              tostring(problem)
+              tostring(problem),
+              on and "" or " (it may look enabled, but its clicks are ignored)"
             )
           )
         end
