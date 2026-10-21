@@ -22,7 +22,7 @@ The game keeps each playthrough as a "world" with several save slots (manual sav
 
 ## How the API decides
 
-At every `InitGameState` the current world is cleared and an internal counter is bumped. The world is entered when `IsPreviewScene` is `false` and `WorldTitleName` is not empty. Anything else (menu, empty title, a subsystem that cannot be read) means no world, with one log line. Each enter gets a new `generation` and logs one line: title, key, generation, and `NewGameName`, `IsSandbox` and `NetSession` (each read on its own, so a missing one does not hide the others).
+At every `InitGameState` the current world is cleared and an internal counter is bumped. The world is entered when `IsPreviewScene` is `false` and `WorldTitleName` is not empty. Anything else (menu, empty title, a subsystem or title that cannot be read) means no world, with one log line (a title that cannot be read as text is never replaced by a made-up one). Each enter gets a new `generation` and logs one line: title, key, generation, and `NewGameName`, `IsStartup`, `IsSandbox` and `NetSession` (each read on its own, so a missing one does not hide the others).
 
 After a UE4SS mods restart there is no `InitGameState` until the next load, so the API reads the subsystem once, about a second after it starts, and only enters (it never reports "no world" from that read). The read is skipped if a game state started in the meantime.
 

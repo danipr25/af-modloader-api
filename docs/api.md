@@ -315,8 +315,8 @@ Status: **verified in game** with a throwaway mod (the console opens with both k
 | `RegisterInitGameStatePostHook` | Second trigger to turn the console on | verified in game: it turned the console on at the main menu |
 | `/Script/Engine.Console`, `GameViewport.ViewportConsole`, `InputSettings.ConsoleKeys` | The console | verified in game |
 | `RegisterConsoleCommandGlobalHandler` | Commands | verified in game |
-| `RegisterInitGameStatePostHook` and `FindFirstOf("GameSaveLoadSubsystem")` fields `IsPreviewScene` and `WorldTitleName` (`NewGameName`, `IsSandbox`, `NetSession` are only logged) | `api.world`: which world is loaded | fields verified in a probe (2026-10-21, game 1.1.5023); the API's use of them not verified |
-| `ExecuteWithDelay` then `ExecuteInGameThread` | Every delayed call in the API (retries, the read after install) | verified in a probe (2026-10-21) |
+| `RegisterInitGameStatePostHook` and `FindFirstOf("GameSaveLoadSubsystem")` fields `IsPreviewScene` and `WorldTitleName` (`NewGameName`, `IsStartup`, `IsSandbox`, `NetSession` are only logged) | `api.world`: which world is loaded | fields verified in a probe (2026-10-21, game 1.1.5023); the API's use of them not verified |
+| `ExecuteWithDelay` then `ExecuteInGameThread` | The read after install | verified in a probe (2026-10-21) |
 | `LoopInGameThreadWithDelay` and `CancelDelayedAction`, or `LoopAsync` | Poll inputs for `onChange` | `LoopInGameThreadWithDelay` verified in game; `CancelDelayedAction` not verified |
 | `AF.onUnload` | Stops the input polling on unload. Removing our tabs is disabled (see "Restarting mods") | not verified (loader feature) |
 

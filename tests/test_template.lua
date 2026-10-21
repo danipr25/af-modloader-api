@@ -41,7 +41,7 @@ local function setup()
     end,
     ExecuteWithDelay = function() end,
     ExecuteInGameThread = function() end,
-    FindFirstOf = function() end, -- no GameSaveLoadSubsystem: the template shows "No world loaded"
+    FindFirstOf = function() end, -- no GameSaveLoadSubsystem: the world is nil
   }
   for name, value in pairs(_G) do
     stubs[name] = stubs[name] or value
@@ -110,7 +110,7 @@ return {
       lu.assertFalse(s.handlers["mymod.hello"]("other.command", {}, device)) -- not its name: not handled
     end,
 
-    testWorldReachesTheTemplatesApiHandle = function()
+    testWorldReachesModsThroughTheRealApi = function()
       local s = setup()
       local subsystem = {
         IsPreviewScene = false,

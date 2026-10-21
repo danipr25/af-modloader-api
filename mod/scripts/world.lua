@@ -25,13 +25,33 @@ local function plain(value)
   return value
 end
 
+-- The title as text, or nil when it cannot be read: a world must never be entered with a made-up title.
+local function strictText(value)
+  if type(value) == "string" then
+    return value
+  end
+  if type(value) == "userdata" then
+    local ok, text = pcall(function()
+      return value:ToString()
+    end)
+    if ok and type(text) == "string" then
+      return text
+    end
+  end
+  return nil
+end
+
 -- What the game shows now: { preview = boolean, title = text, subsystem = object }, or nil when it cannot be read.
 local function readSubsystem()
   local subsystem = FindFirstOf("GameSaveLoadSubsystem")
   if not isValid(subsystem) or subsystem:GetFullName():find("Default__", 1, true) then
     return nil
   end
-  return { preview = plain(subsystem.IsPreviewScene), title = plain(subsystem.WorldTitleName), subsystem = subsystem }
+  local title = strictText(subsystem.WorldTitleName)
+  if title == nil then
+    return nil
+  end
+  return { preview = plain(subsystem.IsPreviewScene), title = title, subsystem = subsystem }
 end
 
 local function safeRead()
@@ -60,7 +80,7 @@ end
 -- does not hide the others).
 function World:logEnter(entered, subsystem)
   local extra = {}
-  for _, field in ipairs({ "NewGameName", "IsSandbox", "NetSession" }) do
+  for _, field in ipairs({ "NewGameName", "IsStartup", "IsSandbox", "NetSession" }) do
     local ok, value = pcall(function()
       return plain(subsystem[field])
     end)
@@ -90,12 +110,11 @@ local REASONS = {
 
 function World:onInitGameState()
   local observation, problem = safeRead()
-  if problem then
-    self.log("world: " .. problem)
-  end
   local event, result = self.state:onInitGameState(observation)
   if event == "enter" then
     self:enter(result, observation.subsystem)
+  elseif problem then
+    self.log(string.format("world: could not read the game's save state (%s), so no world is reported", problem))
   else
     self.log(REASONS[result])
   end
