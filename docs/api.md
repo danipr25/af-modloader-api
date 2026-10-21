@@ -110,7 +110,7 @@ heading:color(1.0, 0.75, 0.2, 1.0) -- gold
 page:text("A long explanation that should stay inside the panel.", { wrap = true })
 ```
 
-Status: the text (a `TextBlock`) is **verified in game**. `color` (`SetColorAndOpacity`) is **verified in game for page texts only**, with a gold heading in a probe (2026-10-21, game 1.1.5023); on row and list texts it is **not verified** until the in-game test of the template. `wrap` (`SetAutoWrapText(true)`) is **verified in game** in the same probe: the line wraps at the panel's edge. Both were verified when set on a text already shown; setting them at build time, as the template does, is checked by the template's in-game test.
+Status: the text (a `TextBlock`) is **verified in game**. `color` (`SetColorAndOpacity`) and `wrap` (`SetAutoWrapText(true)`) are **verified in game** (2026-10-21, game 1.1.5023): first in a probe on texts already shown, then with API 0.1.3 and the template, set at build time (a gold page heading, a grey row text, a long page line that wraps at the panel's edge). Color on list texts is not verified (same widget class).
 
 ### `page:input(spec)` returns `input`
 
@@ -146,7 +146,7 @@ row:button("Next", function() showPage(current + 1) end)
 
 Buttons live in rows made with `page:row()`. List rows (`list:row()`) have no buttons. About three buttons fit in a row: a fourth runs past the panel.
 
-Status: `HorizontalBox` and the button (`WBP_ButtonBase_C` created with `Create`, label with `SetButtonText`) are **verified in game** in a spike (2026-10-21, see [widgets.md](widgets.md)). The API's own `row:button`, with a click that calls `tab:refresh()`, is **verified in game** too (2026-10-21, API 0.1.1): one effect per click, also after many fast clicks. `enable` (`SetIsEnabled`) is **verified in game** in a probe (2026-10-21): the button turns grey and clicks do nothing. Not verified yet: a button disabled at build time and still grey after closing and reopening the TAB menu, and enabling it later from another button (the in-game test of the template). The click router also skips a button its handle marked disabled, as a second guard.
+Status: `HorizontalBox` and the button (`WBP_ButtonBase_C` created with `Create`, label with `SetButtonText`) are **verified in game** in a spike (2026-10-21, see [widgets.md](widgets.md)). The API's own `row:button`, with a click that calls `tab:refresh()`, is **verified in game** too (2026-10-21, API 0.1.1): one effect per click, also after many fast clicks. `enable` (`SetIsEnabled`) is **verified in game** in a probe (2026-10-21): the button turns grey and clicks do nothing. Also verified with API 0.1.3 and the template (2026-10-21): a button disabled at build time is grey and ignores clicks, stays grey after closing and reopening the TAB menu, and works again after another button calls `enable(true)`. The click router also skips a button its handle marked disabled, as a second guard.
 
 ### `page:grid()` returns `grid`
 
