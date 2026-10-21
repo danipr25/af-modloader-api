@@ -77,11 +77,14 @@ function registry.new(options)
   self.commandList = {}
   self.commandsByName = {} -- registered lowercase name -> entry
   self.commandsByAlias = {} -- uppercase alias -> entry
+  self.worldEnterList = {} -- { owner, fn } in registration order
   -- Optional callbacks, set by the game-facing modules:
   --   onCommandAdded(entry) registers the name with the console
   --   onTabRefresh(entry)   rebuilds the page of a tab
+  --   worldCurrent()        the current world (a fresh copy) or nil
   self.onCommandAdded = nil
   self.onTabRefresh = nil
+  self.worldCurrent = nil
   return self
 end
 
@@ -235,6 +238,23 @@ function Registry:consoleNeededBy()
   return owners
 end
 
+-- Returns true, or nil plus the problem and its kind: "invalid" (a bug in the mod) or "late".
+function Registry:addWorldEnter(owner, fn)
+  if self.sealed then
+    return nil, lateMessage("world.onEnter"), "late"
+  end
+  if type(fn) ~= "function" then
+    return nil, "world.onEnter needs a function(world) that runs when a world is loaded", "invalid"
+  end
+  self.worldEnterList[#self.worldEnterList + 1] = { owner = owner, fn = fn }
+  return true
+end
+
+-- The onEnter callbacks in registration order.
+function Registry:worldCallbacks()
+  return { table.unpack(self.worldEnterList) }
+end
+
 -- The per-mod handle: what a mod calls. 'AF' is the mod's own AF table, and only identifies the owner in logs.
 function Registry:use(AF)
   if type(AF) ~= "table" or type(AF.modId) ~= "string" or type(AF.log) ~= "function" then
@@ -275,8 +295,23 @@ function Registry:use(AF)
     error(problem, 2)
   end
 
+  local world = {}
+  function world.onEnter(fn)
+    local ok, problem = registryRef:addWorldEnter(owner, fn)
+    if not ok then
+      error(problem, 2)
+    end
+  end
+  function world.current()
+    if registryRef.worldCurrent then
+      return registryRef.worldCurrent()
+    end
+    return nil
+  end
+
   return registry.readonly({
     version = self.version,
+    world = registry.readonly(world, "api.world"),
     tabs = registry.readonly(tabs, "api.tabs"),
     console = registry.readonly(console, "api.console"),
   }, "the API handle")

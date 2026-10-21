@@ -5,8 +5,9 @@ local commands = require("commands")
 local console = require("console")
 local registry = require("registry")
 local tabs = require("tabs")
+local world = require("world")
 
-local VERSION = "0.1.1"
+local VERSION = "0.1.2"
 
 local reg = registry.new({ selfId = AF.modId, version = VERSION, log = AF.log })
 local dispatcher = commands.new(reg, AF.log)
@@ -18,12 +19,16 @@ local consoleMod = console.new({
   decode = AF.json.decode,
 })
 local tabsMod = tabs.new({ registry = reg, log = AF.log })
+local worldMod = world.new({ registry = reg, log = AF.log })
 
 reg.onCommandAdded = function(entry)
   consoleMod:register(entry)
 end
 reg.onTabRefresh = function(entry)
   tabsMod:refresh(entry)
+end
+reg.worldCurrent = function()
+  return worldMod:current()
 end
 
 local helpEntry, helpProblem = reg:addCommand(AF.modId, commands.helpSpec(reg))
@@ -33,6 +38,7 @@ end
 
 consoleMod:install()
 tabsMod:install()
+worldMod:install()
 AF.onUnload(function()
   tabsMod:cleanup()
 end)
