@@ -184,7 +184,8 @@ function ui.newPage(ctx)
         end
         if live() then
           local ok, problem = pcall(function()
-            widget:SetColorAndOpacity({ SpecifiedColor = { R = red, G = green, B = blue, A = alpha }, ColorUseRule = 0 })
+            local color = { R = red, G = green, B = blue, A = alpha }
+            widget:SetColorAndOpacity({ SpecifiedColor = color, ColorUseRule = 0 })
           end)
           if not ok then
             ctx.log(string.format("mod %s: a text color could not be set: %s", ctx.owner, tostring(problem)))
