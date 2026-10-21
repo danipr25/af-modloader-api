@@ -66,8 +66,8 @@ return {
       end)
       lu.assertTrue(dispatcher:dispatch("recipes.boom", {}, device))
       lu.assertEquals(written, { "Command failed, see UE4SS.log" })
-      lu.assertStrContains(logs[1], "recipes")
-      lu.assertStrContains(logs[1], "kaboom")
+      lu.assertStrContains(logs[#logs], "recipes")
+      lu.assertStrContains(logs[#logs], "kaboom")
     end,
 
     testOutputAfterTheCommandFinishedGoesToTheLog = function()
@@ -79,7 +79,7 @@ return {
       dispatcher:dispatch("recipes.later", {}, device)
       savedOut("too late")
       lu.assertEquals(written, {})
-      lu.assertStrContains(logs[1], "too late")
+      lu.assertStrContains(logs[#logs], "too late")
     end,
   },
 
