@@ -23,6 +23,9 @@ A `WrapBox` (`/Script/UMG.WrapBox`, created with `StaticConstructObject` and out
 - `SetButtonText(FText)` (from `LyraButtonBase`) sets the label.
 - A click calls `/Script/CommonUI.CommonButtonBase:HandleButtonPressed` and then `HandleButtonClicked`; post hooks on both receive the button as the context. `BP_OnClicked` never fired.
 - These hooks fire for every CommonUI button in the game: the handler must ignore buttons it did not create.
+- `SetIsEnabled(false)`: the button turns grey and clicks do nothing (`HandleButtonClicked` does not fire). `SetIsInteractionEnabled(false)` looks and acts the same. The API uses `SetIsEnabled`.
+- Not used: `SetIsSelectable(true)` with `SetIsSelected(true, false)` draws a flat white box outside the game's style, and clicks still fire. `SetIsLocked(true)` changes nothing visible, and clicks still fire.
+- About three of these buttons fit in a row: a fourth runs past the panel.
 
 ### `WBP_IconButton_C`
 
@@ -32,4 +35,7 @@ A `WrapBox` (`/Script/UMG.WrapBox`, created with `StaticConstructObject` and out
 
 ## Seen in the test
 
-- A long `TextBlock` line does not wrap: it runs past the panel's edge. Wrapping (`SetAutoWrapText`) was not tested.
+- A long `TextBlock` line does not wrap: it runs past the panel's edge. `SetAutoWrapText(true)` makes it wrap at the panel's edge (probe, 2026-10-21).
+- `TextBlock:SetColorAndOpacity({ SpecifiedColor = { R, G, B, A }, ColorUseRule = 0 })` changes the text color (gold tested).
+- **Never call `TextBlock:SetFont` with a Lua table: it crashes the game** (access violation). The API does not offer font changes. The default text font is size 24, typeface "Bold".
+- `SetRenderScale` shrinks the drawing but keeps the layout size, so it does not make room. `SetShadowColorAndOpacity` with `SetShadowOffset` works, but the game's panel texts have no shadow. Neither is used.
