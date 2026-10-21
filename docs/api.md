@@ -188,7 +188,7 @@ A player who does not want that creates the file `<game folder>\mods\.data\af-mo
 
 Then the console stays off, and commands from mods cannot be used. A missing file means "on". An unreadable file is ignored, which also means "on", and the log says why. `UE4SS.log` always states which mods asked for the console and whether it was turned on. See [console.md](console.md) for how it works.
 
-Status: **verified in game** with a throwaway mod (the console opens with both keys). Verified with the API (2026-10-21): the console was turned on at the first game state (main menu) and worked after loading a save. The opt-out file is **not verified**.
+Status: **verified in game** with a throwaway mod (the console opens with both keys). Verified with the API (2026-10-21): the console was turned on at the first game state (main menu) and worked after loading a save. The opt-out file `{ "console": false }` is verified too: the console stays closed and the log says why and how to turn it back on.
 
 ## Game hooks used
 
