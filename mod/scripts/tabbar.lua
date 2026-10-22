@@ -9,7 +9,6 @@ local plan = require("tabbar_plan")
 local ui = require("ui")
 
 local TAB_CLASS = "/Game/Blueprints/WBP/Utility/WBP_TagSwitcher.WBP_TagSwitcher_C"
-local ARROW_TEXTURE = "/Game/Arts/UI/Interaction/T_UI_RightArrow.T_UI_RightArrow"
 local CLICK_HOOK = TAB_CLASS .. ":OnMouseButtonDown"
 local OWNER = "af-modloader-api"
 -- ESlateVisibility, and the overlay slot alignments (verified in the tab bar probe, 2026-10-22).
@@ -18,8 +17,7 @@ local H_LEFT, H_CENTER, H_RIGHT, V_TOP, V_CENTER = 1, 2, 3, 1, 2
 local ARROW_WIDTH = 64
 local ARROW_SIZE = 36
 local GAP = 4
-local GOLD = { R = 1.0, G = 0.75, B = 0.2, A = 1.0 }
-local GREY = { R = 0.45, G = 0.42, B = 0.38, A = 1.0 }
+local GOLD, GREY = ui.GOLD, ui.GREY
 
 local isValid = ui.isValid
 local addressOf = ui.addressOf
@@ -108,26 +106,6 @@ local function readGeometry(group, knownPadding)
   }
 end
 
--- The arrow texture: already loaded (verified right after loading a save), else LoadAsset once. Logged once.
-function Bar:findTexture()
-  local texture = StaticFindObject(ARROW_TEXTURE)
-  if not isValid(texture) and type(LoadAsset) == "function" then
-    pcall(LoadAsset, ARROW_TEXTURE)
-    texture = StaticFindObject(ARROW_TEXTURE)
-    if not self.loggedTexture then
-      self.loggedTexture = true
-      self.log(
-        isValid(texture) and ("game texture " .. ARROW_TEXTURE .. ": loaded with LoadAsset")
-          or ("game texture " .. ARROW_TEXTURE .. " is not available: the tab bar cannot show its arrows")
-      )
-    end
-  end
-  if not isValid(texture) then
-    error("the arrow texture is not available", 0)
-  end
-  return texture
-end
-
 -- One arrow: the game's tab widget with no title and a fixed width, the arrow image on top (gold, mirrored for
 -- "previous", not hit-testable so the click lands on the tab), all in a small Overlay inside the bar's overlay.
 local function makeArrow(state, geometry, side, texture)
@@ -178,7 +156,10 @@ function Bar:ensureArrows(state, rec)
   if rec.arrows then
     return
   end
-  local texture = self:findTexture()
+  local texture = ui.findTexture(ui.ARROW_TEXTURE, self.log)
+  if texture == nil then
+    error("the arrow texture is not available", 0)
+  end
   local made = {}
   local ok, problem = pcall(function()
     made.previous = makeArrow(state, rec.geometry, "previous", texture)
