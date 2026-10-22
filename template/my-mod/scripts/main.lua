@@ -1,6 +1,7 @@
 -- My Mod: a starting point. Copy this folder, rename it, and change "id" and "name" in mod.json.
--- It adds one tab to the TAB menu (colored and wrapped text, a text box, buttons, a grid of clickable item tiles
--- and a list) and one console command. See docs/api.md in af-modloader-api for everything the API offers.
+-- It adds one tab to the TAB menu (colored and wrapped text, a text box, buttons, a clickable item tile in a row,
+-- a grid of clickable item tiles and a list) and one console command. See docs/api.md in af-modloader-api for
+-- everything the API offers.
 
 local api = AF.require("af-modloader-api").use(AF)
 
@@ -41,8 +42,17 @@ tab = api.tabs.add({
     row:button("Press me", function()
       presses = presses + 1
       message = "Button pressed " .. presses .. " times"
-      tab:refresh() -- a click may rebuild the page: build runs again and shows the new message
+      -- Change the text in place: tab:refresh() would rebuild the whole page, and the menu flickers when it does.
+      heading:set(message)
     end)
+
+    -- An item tile in a row can be clickable: pass { onClick = function(name) end } (the count must be 1 or left out).
+    row:item("Wood", 1, {
+      onClick = function(clicked)
+        message = "You clicked " .. clicked
+        heading:set(message)
+      end,
+    })
 
     -- A disabled button is grey and ignores clicks. Call enable() after the button is in its row, and keep the
     -- handle to enable it later. Texts in a row can be colored too.

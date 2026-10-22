@@ -13,7 +13,7 @@ A `WrapBox` (`/Script/UMG.WrapBox`, created with `StaticConstructObject` and out
 - Clicking it calls its `OnMouseButtonDown`. A post hook on `WBP_RecipeItemTile_C:OnMouseButtonDown` receives the tile as the context, so the clicked tile is known by comparing addresses. With its `ClickEvent` property left at `false` (the default), the game does nothing else on the click.
 - The hook fires for every `WBP_RecipeItemTile_C` in the game, so the handler must ignore tiles it did not create.
 
-`WBP_SimpleItemTile_C` (used by the API's `row:item`) has no click function.
+`WBP_SimpleItemTile_C` (used by the API's `row:item` without `onClick`, and by list rows) has no click function. With `onClick`, a page row's `row:item` uses `WBP_RecipeItemTile_C` instead (API 0.1.6; its look inside a `HorizontalBox` is verified in game, 2026-10-22, game 1.1.5024).
 
 ## Buttons
 
@@ -45,9 +45,9 @@ A `WrapBox` (`/Script/UMG.WrapBox`, created with `StaticConstructObject` and out
 
 Verified in game with a throwaway probe (layout probe 2, 2026-10-22, game 1.1.5024). All widgets were created with `StaticConstructObject` and outer `panel.WidgetTree`; buttons with `Create`.
 
-- A `ScaleBox` (`/Script/UMG.ScaleBox`) with `SetStretch(7)` (UserSpecified) and `SetUserSpecifiedScale(0.7)` around a `TextBlock` shows the text at 0.7 and keeps its real layout size. Unlike `SetRenderScale`, which keeps the layout size of the unscaled widget, the box takes the room of the scaled child. Added to a page's `VerticalBox` it was centered horizontally (the slot default), so the page text is left-aligned with `SetHorizontalAlignment(1)` on its slot. That call was not in the probe: **not verified**.
+- A `ScaleBox` (`/Script/UMG.ScaleBox`) with `SetStretch(7)` (UserSpecified) and `SetUserSpecifiedScale(0.7)` around a `TextBlock` shows the text at 0.7 and keeps its real layout size. Unlike `SetRenderScale`, which keeps the layout size of the unscaled widget, the box takes the room of the scaled child. Added to a page's `VerticalBox` it was centered horizontally (the slot default), so the page text is left-aligned with `SetHorizontalAlignment(1)` on its slot. That call was not in the probe; it is verified through the API (2026-10-22, game 1.1.5024, API 0.1.5): the small text starts at the left edge.
 - A `ScaleBox` at 0.6 around a `WBP_ButtonBase_C` gives a smaller button in the game's style. Clicks arrive through `HandleButtonClicked` with the button's address, as usual.
-- Arrow button: `ScaleBox` 0.6 > `Overlay` [ `WBP_ButtonBase_C` with an empty text, `Image` with `T_UI_RightArrow` (`SetBrushFromTexture`, `SetDesiredSizeOverride`, gold `SetColorAndOpacity`, `HitTestInvisible`) centered in the overlay slot ]. Clicks arrive. An image of 40 looked tiny inside the scaled button, so the API uses 64 (before scaling): that value is a guess, to be confirmed by the in-game test.
+- Arrow button: `ScaleBox` 0.6 > `Overlay` [ `WBP_ButtonBase_C` with an empty text, `Image` with `T_UI_RightArrow` (`SetBrushFromTexture`, `SetDesiredSizeOverride`, gold `SetColorAndOpacity`, `HitTestInvisible`) centered in the overlay slot ]. Clicks arrive. An image of 40 looked tiny inside the scaled button, so the API uses 64 (before scaling): verified in game through the API (2026-10-22, game 1.1.5024, API 0.1.5), the arrow looks right.
 - Rejected: a `SizeBox` of 64 x 64 around the button squashes the button's art.
 - `HorizontalBoxSlot:SetVerticalAlignment(2)` (center) on every child of a row puts a text next to a button or an item tile at mid height.
 
