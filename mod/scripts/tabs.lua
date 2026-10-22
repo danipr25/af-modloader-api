@@ -7,6 +7,7 @@ local clicks = require("clicks")
 local hooks = require("hooks")
 local loop = require("loop")
 local plan = require("tabs_plan")
+local tabbar = require("tabbar")
 local ui = require("ui")
 
 local PANEL_CLASS = "/Game/Blueprints/WBP/PlayerGear/WBP_PlayerGearPanel.WBP_PlayerGearPanel_C"
@@ -154,6 +155,13 @@ function tabs.new(options)
   self.busy = false -- our own rebuild fires the hooks again
   self.gate = plan.newGate(options.log) -- refuses tab:refresh() while a page is being built
   self.clicks = clicks.new(options.log) -- routes clicks on our buttons and tiles to the mods
+  self.bar = tabbar.new({ -- pages the tab bar when the tabs do not fit; its arrows are clicked through the router
+    log = options.log,
+    clicks = self.clicks,
+    route = function(context)
+      self:routeClick(context)
+    end,
+  })
   self.tileHook = "none" -- "none", "requested" (handed to hooks.install), "scheduled" or "registered"
   self.disabled = false
   self.stopPolling = nil
@@ -298,11 +306,13 @@ function Tabs:apply(state, s, appendKeys)
 end
 
 -- Makes sure every registered tab is in this panel exactly once. Safe to call as often as the hooks fire.
+-- Returns true when the panel is as the plan expects (all the tabs are there), false when it was left as it is.
 function Tabs:ensure(panel, origin)
   if self.busy or self.disabled or not isValid(panel) then
-    return
+    return false
   end
   self.busy = true
+  local healthy = false
   local ok, problem = pcall(function()
     local s, reason = structure(panel)
     if not s then
@@ -337,6 +347,7 @@ function Tabs:ensure(panel, origin)
       end
       return
     end
+    healthy = true
     state.refused = nil
     if #result.appendKeys == 0 then
       -- Logged on every check on purpose: this is how the in-game test sees the order the hooks fire in.
@@ -368,6 +379,25 @@ function Tabs:ensure(panel, origin)
   self.busy = false
   if not ok then
     self.log("could not update the TAB menu: " .. tostring(problem))
+  end
+  return ok and healthy
+end
+
+-- Pages the tab bar for the panel that just opened, or gives the game's bar back when 'healthy' is false (the tabs
+-- could not be added, so nothing may stay hidden). Never raises.
+function Tabs:updateBar(panel, healthy)
+  local state = self.state
+  if not (state and isValid(panel) and state.address == addressOf(panel)) then
+    return
+  end
+  local ok, problem = pcall(function()
+    local s = structure(panel)
+    if s then
+      self.bar:update(state, s.group, healthy)
+    end
+  end)
+  if not ok then
+    self.log("could not page the TAB bar: " .. tostring(problem))
   end
 end
 
@@ -562,7 +592,8 @@ function Tabs:install()
       fn = function(context)
         registry:seal()
         local panel = paramValue(context)
-        self:ensure(panel, "BP_OnActivated")
+        local healthy = self:ensure(panel, "BP_OnActivated")
+        self:updateBar(panel, healthy)
         if isValid(panel) and self.state and self.state.address == addressOf(panel) then
           self.state.active = true
           self:startPolling()
@@ -593,6 +624,8 @@ function Tabs:install()
         if isValid(panel) and isValid(group) then
           local s = structure(panel)
           if s and addressOf(s.group) == addressOf(group) then
+            -- The tab bar is never changed from here: doing it inside the group's PreConstruct crashed the game
+            -- (1.1.5024, 2026-10-22). BP_OnActivated follows every open and applies the window there.
             self:ensure(panel, "group PreConstruct")
           end
         end

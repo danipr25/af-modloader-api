@@ -27,6 +27,14 @@ A `WrapBox` (`/Script/UMG.WrapBox`, created with `StaticConstructObject` and out
 - Not used: `SetIsSelectable(true)` with `SetIsSelected(true, false)` draws a flat white box outside the game's style, and clicks still fire. `SetIsLocked(true)` changes nothing visible, and clicks still fire.
 - About three of these buttons fit in a row: a fourth runs past the panel.
 
+### The tab widget as a button: `WBP_TagSwitcher_C`
+
+- Path: `/Game/Blueprints/WBP/Utility/WBP_TagSwitcher.WBP_TagSwitcher_C`, the class of the tab bar's buttons. Created with `Create`, with `Title`, `Txt_Title` and `Txt_Title_Highlight` emptied and its root `SizeBox` fixed with `SetMinDesiredWidth` and `SetMaxDesiredWidth`, it is a blank game-styled button with the tab hover. The API uses it for the two arrows of the paged tab bar (game 1.1.5024, probe 2026-10-22).
+- A click calls `OnMouseButtonDown`; a post hook receives the widget as the context. It fires for every tab button in the game, so the handler must ignore widgets it did not create.
+- The arrow picture is the game's texture `/Game/Arts/UI/Interaction/T_UI_RightArrow.T_UI_RightArrow`, put on top in an `Image` with `SetBrushFromTexture` (loaded after loading a save; `LoadAsset` also returns it).
+- The arrows are put under the page box frame by re-adding the page box last in `Overlay_1` (`RemoveChild` then `AddChildToOverlay`): verified in game (2026-10-22, game 1.1.5024).
+- The API collapses and shows the arrows with `SetVisibility`. That call was verified on the tab buttons, not on the arrows themselves: not verified in game yet.
+
 ### `WBP_IconButton_C`
 
 - Path: `/Game/Blueprints/WBP/BuildOptionsPanel/WBP_IconButton.WBP_IconButton_C`. A round button with an icon and a short label (`Txt_Name`, a `CommonTextBlock`).
@@ -38,4 +46,5 @@ A `WrapBox` (`/Script/UMG.WrapBox`, created with `StaticConstructObject` and out
 - A long `TextBlock` line does not wrap: it runs past the panel's edge. `SetAutoWrapText(true)` makes it wrap at the panel's edge (probe and API 0.1.3 template, 2026-10-21, both on a shown text and set at build time).
 - `TextBlock:SetColorAndOpacity({ SpecifiedColor = { R, G, B, A }, ColorUseRule = 0 })` changes the text color (gold and grey, on a shown text and set at build time; probe and API 0.1.3 template, 2026-10-21). A light grey (0.7) on the panel's brown reads, but is hard to tell from white.
 - **Never call `TextBlock:SetFont` with a Lua table: it crashes the game** (access violation). The API does not offer font changes. The default text font is size 24, typeface "Bold".
+- A widget set to `Collapsed` measures 0 in `GetDesiredSize` and takes no room. After a change, `ForceLayoutPrepass()` on a parent updates the sizes in the same call (game 1.1.5024, probe 2026-10-22).
 - `SetRenderScale` shrinks the drawing but keeps the layout size, so it does not make room. `SetShadowColorAndOpacity` with `SetShadowOffset` works, but the game's panel texts have no shadow. Neither is used.
