@@ -72,15 +72,23 @@ local function titlesOf(group)
 end
 
 -- Where the bar lives and how much room it has, read once per panel before anything is changed: the bar's parent must
--- be an Overlay whose child 1 is the page box (a SizeBox), found by position because the box is not a variable.
+-- be an Overlay with exactly one SizeBox child, the page box, found by class because it is not a variable and its
+-- position changes when the arrows are put under it.
 local function readGeometry(group, knownPadding)
   local overlay = group:GetParent()
   if not isValid(overlay) or className(overlay) ~= "Overlay" then
     error("the tab bar is not inside an Overlay", 0)
   end
-  local box = overlay:GetChildAt(1)
-  if not isValid(box) or className(box) ~= "SizeBox" then
-    error("the page box next to the tab bar was not found", 0)
+  local box, boxes = nil, 0
+  for index = 0, overlay:GetChildrenCount() - 1 do
+    local child = overlay:GetChildAt(index)
+    if isValid(child) and className(child) == "SizeBox" then
+      box = child
+      boxes = boxes + 1
+    end
+  end
+  if boxes ~= 1 then
+    error(string.format("expected one page box next to the tab bar, found %d", boxes), 0)
   end
   -- bOverride_WidthOverride is a bitfield: set when true or 1.
   local flag = box.bOverride_WidthOverride
@@ -93,6 +101,7 @@ local function readGeometry(group, knownPadding)
   end
   return {
     overlay = overlay,
+    box = box,
     padding = original,
     available = width - original.Left,
     translationY = group.RenderTransform.Translation.Y + 0.0,
@@ -182,6 +191,7 @@ function Bar:ensureArrows(state, rec)
     error(problem, 0)
   end
   rec.arrows = made
+  self:moveBoxLast(rec)
   for side, arrow in pairs(made) do
     self.clicks:register(arrow.address, {
       owner = OWNER,
@@ -194,6 +204,32 @@ function Bar:ensureArrows(state, rec)
     })
   end
   self:ensureClickHook(addressOf(StaticFindObject(TAB_CLASS)))
+end
+
+-- Puts the page box last in the overlay so it is drawn over the arrows, as it is over the real tabs: the arrows were
+-- added after it and would cover its frame. Its padding and alignments are copied to the new slot. Once per panel,
+-- when the arrows are first made. Unverified (RemoveChild, AddChildToOverlay of the box). On a failure the order
+-- stays as it is: the arrows still work, they are only drawn over the frame.
+function Bar:moveBoxLast(rec)
+  local geometry = rec.geometry
+  local ok, problem = pcall(function()
+    local box, slot = geometry.box, geometry.box.Slot
+    local padding = slot.Padding
+    local kept = { Left = padding.Left, Top = padding.Top, Right = padding.Right, Bottom = padding.Bottom }
+    local horizontal, vertical = slot.HorizontalAlignment, slot.VerticalAlignment
+    geometry.overlay:RemoveChild(box)
+    local moved = geometry.overlay:AddChildToOverlay(box)
+    moved:SetPadding(kept)
+    moved:SetHorizontalAlignment(horizontal)
+    moved:SetVerticalAlignment(vertical)
+  end)
+  if not ok then
+    self:note(
+      rec,
+      "order",
+      "could not put the page box over the tab bar arrows (" .. tostring(problem) .. "): they are drawn over its frame"
+    )
+  end
 end
 
 -- Registers the arrows' click hook once the tab class is known to be loaded. Called whenever arrows are made: cheap
@@ -254,7 +290,7 @@ function Bar:cleanLeftovers(rec, group)
       return
     end
     local found = 0
-    for index = overlay:GetChildrenCount() - 1, 2, -1 do
+    for index = overlay:GetChildrenCount() - 1, 1, -1 do
       local child = overlay:GetChildAt(index)
       if isValid(child) and className(child) == "Overlay" then
         local inner = child:GetChildAt(0)
