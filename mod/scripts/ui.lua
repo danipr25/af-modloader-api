@@ -13,10 +13,24 @@ local CLASS = {
   tile = "/Game/Blueprints/WBP/Utility/WBP_SimpleItemTile.WBP_SimpleItemTile_C",
   recipeTile = "/Game/Blueprints/WBP/Utility/WBP_RecipeItemTile.WBP_RecipeItemTile_C",
   button = "/Game/Blueprints/WBP/Utility/WBP_ButtonBase.WBP_ButtonBase_C",
+  scale = "/Script/UMG.ScaleBox",
+  overlay = "/Script/UMG.Overlay",
+  image = "/Script/UMG.Image",
   library = "/Script/UMG.Default__WidgetBlueprintLibrary",
 }
 ui.CLASS = CLASS
 ui.FILL = 1 -- ESlateSizeRule::Fill
+ui.ARROW_TEXTURE = "/Game/Arts/UI/Interaction/T_UI_RightArrow.T_UI_RightArrow"
+ui.GOLD = { R = 1.0, G = 0.75, B = 0.2, A = 1.0 }
+ui.GREY = { R = 0.45, G = 0.42, B = 0.38, A = 1.0 }
+local GOLD, GREY = ui.GOLD, ui.GREY
+
+-- Slot alignments, EStretch::UserSpecified, ESlateVisibility::HitTestInvisible (verified in game, 2026-10-22).
+local H_LEFT, H_CENTER, V_CENTER = 1, 2, 2
+local USER_SPECIFIED, HIT_TEST_INVISIBLE = 7, 3
+-- Small widgets are drawn inside a ScaleBox: the text at 0.7, the buttons at 0.6. The arrow image is larger than
+-- the button's art seems to need, because the scale shrinks it too (64 is a guess: the in-game test checks it).
+local SMALL_TEXT_SCALE, SMALL_BUTTON_SCALE, ARROW_IMAGE_SIZE = 0.7, 0.6, 64.0
 
 function ui.isValid(object)
   if object == nil then
@@ -63,6 +77,27 @@ function ui.findClass(path, log)
   end
 end
 
+-- Finds a game texture that may not be loaded yet: StaticFindObject, then LoadAsset once (both verified for the
+-- arrow texture). Logs once per path if it had to be loaded, or that it is not available. Returns the texture, or nil.
+local textureNotes = {}
+function ui.findTexture(path, log)
+  local texture = StaticFindObject(path)
+  if not isValid(texture) and type(LoadAsset) == "function" then
+    pcall(LoadAsset, path)
+    texture = StaticFindObject(path)
+    if textureNotes[path] == nil then
+      textureNotes[path] = true
+      log(
+        isValid(texture) and ("game texture " .. path .. ": loaded with LoadAsset")
+          or ("game texture " .. path .. " is not available: widgets that need it fall back or fail")
+      )
+    end
+  end
+  if isValid(texture) then
+    return texture
+  end
+end
+
 -- Creates a widget of a UMG class (verified for VerticalBox, TextBlock, EditableTextBox, ScrollBox and WrapBox).
 function ui.construct(classPath, outer)
   local class = StaticFindObject(classPath)
@@ -93,6 +128,21 @@ function ui.inertButton()
   }
 end
 local inertButton = ui.inertButton
+
+function ui.inertArrow()
+  return {
+    enable = function() end,
+  }
+end
+local inertArrow = ui.inertArrow
+
+-- A ScaleBox that draws its child at a fixed scale but keeps the child's real layout size (verified in game).
+local function scaleBox(tree, scale)
+  local box = ui.construct(CLASS.scale, tree)
+  box:SetStretch(USER_SPECIFIED)
+  box:SetUserSpecifiedScale(scale)
+  return box
+end
 
 -- Checks one color channel (a number) and clamps it to 0-1.
 local function channel(value, name)
@@ -150,7 +200,50 @@ function ui.newPage(ctx)
     end
   end
 
-  local function makeText(str, add, extraCheck, wrap)
+  -- Centers a child of a row vertically, so a text, a tile and a button side by side share a middle line
+  -- (HorizontalBoxSlot, verified in game). Logged once per page if the game refuses.
+  local centerWarned = false
+  local function centerSlot(slot)
+    local ok, problem = pcall(function()
+      slot:SetVerticalAlignment(V_CENTER)
+    end)
+    if not ok and not centerWarned then
+      centerWarned = true
+      ctx.log(
+        string.format(
+          "mod %s: a row child could not be centered, it sits at the top of its row: %s",
+          ctx.owner,
+          tostring(problem)
+        )
+      )
+    end
+  end
+
+  -- Checks the optional table of page:text (wrapAllowed) or row:text and returns wrap and small. The errors point
+  -- at the mod's call (level 3).
+  local function textOptions(opts, fn, wrapAllowed)
+    local usage = wrapAllowed and '{ wrap = true or false, size = "normal" or "small" }'
+      or '{ size = "normal" or "small" }'
+    if opts == nil then
+      return nil, false
+    end
+    local bad = type(opts) ~= "table"
+    if not bad then
+      bad = (wrapAllowed and opts.wrap ~= nil and type(opts.wrap) ~= "boolean")
+        or (opts.size ~= nil and opts.size ~= "normal" and opts.size ~= "small")
+    end
+    if bad then
+      error(string.format("%s takes an optional table %s", fn, usage), 3)
+    end
+    local small = opts.size == "small"
+    if small and opts.wrap then
+      error(string.format("%s: size = 'small' cannot be combined with wrap", fn), 3)
+    end
+    return opts.wrap, small
+  end
+
+  -- add(widget, small) puts the finished widget on its page or row (a small text arrives inside its ScaleBox).
+  local function makeText(str, add, extraCheck, wrap, small)
     local widget = ui.construct(CLASS.text, ctx.tree)
     widget:SetText(FText(tostring(str)))
     if wrap then
@@ -167,7 +260,13 @@ function ui.newPage(ctx)
         )
       end
     end
-    add(widget)
+    if small then
+      local box = scaleBox(ctx.tree, SMALL_TEXT_SCALE)
+      box:AddChild(widget)
+      add(box, true)
+    else
+      add(widget, false)
+    end
     local live = liveCheck(widget, "text", extraCheck)
     return {
       set = function(_, newText)
@@ -212,7 +311,7 @@ function ui.newPage(ctx)
       error("the game did not create an item tile")
     end
     tile:UpdateItemInfo(FName(name), count or 1, 0, false) -- the count (2nd argument) is verified only with 1
-    hbox:AddChildToHorizontalBox(tile)
+    centerSlot(hbox:AddChildToHorizontalBox(tile))
     return liveCheck(tile, "item tile", extraCheck)
   end
 
@@ -236,13 +335,8 @@ function ui.newPage(ctx)
     return address
   end
 
-  local function makeButton(hbox, label, onClick, extraCheck)
-    if type(label) ~= "string" or label == "" then
-      error('row:button needs the label as text, like "Next"', 3)
-    end
-    if type(onClick) ~= "function" then
-      error("row:button needs a function: row:button(label, function() ... end)", 3)
-    end
+  -- Creates one of the game's buttons with its label (an empty label for the arrows).
+  local function createButton(label)
     local library = StaticFindObject(CLASS.library)
     local class = ui.findClass(CLASS.button, ctx.log)
     if not isValid(library) or not class then
@@ -253,7 +347,25 @@ function ui.newPage(ctx)
       error("the game did not create a button")
     end
     button:SetButtonText(FText(label))
-    hbox:AddChildToHorizontalBox(button)
+    return button
+  end
+
+  -- small: the button is drawn inside a ScaleBox at 0.6.
+  local function makeButton(hbox, label, onClick, extraCheck, small)
+    if type(label) ~= "string" or label == "" then
+      error('row:button needs the label as text, like "Next"', 3)
+    end
+    if type(onClick) ~= "function" then
+      error("row:button needs a function: row:button(label, function() ... end)", 3)
+    end
+    local button = createButton(label)
+    if small then
+      local box = scaleBox(ctx.tree, SMALL_BUTTON_SCALE)
+      box:AddChild(button)
+      centerSlot(hbox:AddChildToHorizontalBox(box))
+    else
+      centerSlot(hbox:AddChildToHorizontalBox(button))
+    end
     local enabled = true
     registerClick(button, extraCheck, onClick, function()
       return not enabled
@@ -294,6 +406,84 @@ function ui.newPage(ctx)
     }
   end
 
+  -- An arrow button: the game's button with no text in a small ScaleBox, the game's arrow picture on top (gold,
+  -- mirrored for "previous", not hit-testable so the click lands on the button). Without the texture it is a small
+  -- button labelled "<" or ">". The handle is { enable } on every path.
+  local function makeArrow(hbox, direction, onClick, extraCheck)
+    if direction ~= "previous" and direction ~= "next" then
+      error('row:arrow needs "previous" or "next" as the direction', 3)
+    end
+    if type(onClick) ~= "function" then
+      error('row:arrow needs a function: row:arrow("next", function() ... end)', 3)
+    end
+    local texture = ui.findTexture(ui.ARROW_TEXTURE, ctx.log)
+    if texture == nil then
+      ctx.log(
+        string.format(
+          "mod %s: the arrow picture is not available, so the %s arrow is a small button labelled %s",
+          ctx.owner,
+          direction,
+          direction == "next" and '">"' or '"<"'
+        )
+      )
+      local fallback = makeButton(hbox, direction == "next" and ">" or "<", onClick, extraCheck, true)
+      return {
+        enable = function(_, on)
+          fallback:enable(on)
+        end,
+      }
+    end
+    local button = createButton("")
+    local box = scaleBox(ctx.tree, SMALL_BUTTON_SCALE)
+    local overlay = ui.construct(CLASS.overlay, ctx.tree)
+    overlay:AddChildToOverlay(button)
+    local image = ui.construct(CLASS.image, ctx.tree)
+    image:SetBrushFromTexture(texture, false)
+    image:SetDesiredSizeOverride({ X = ARROW_IMAGE_SIZE, Y = ARROW_IMAGE_SIZE })
+    image:SetColorAndOpacity(GOLD)
+    image:SetVisibility(HIT_TEST_INVISIBLE)
+    if direction == "previous" then
+      image:SetRenderScale({ X = -1.0, Y = 1.0 })
+    end
+    local inner = overlay:AddChildToOverlay(image)
+    inner:SetHorizontalAlignment(H_CENTER)
+    inner:SetVerticalAlignment(V_CENTER)
+    box:AddChild(overlay)
+    centerSlot(hbox:AddChildToHorizontalBox(box))
+    local enabled = true
+    registerClick(button, extraCheck, onClick, function()
+      return not enabled
+    end)
+    local live = liveCheck(button, "arrow", extraCheck)
+    return {
+      -- Like button:enable: SetIsEnabled, and the picture is grey when off and gold when on.
+      enable = function(_, on)
+        if type(on) ~= "boolean" then
+          error("arrow:enable needs true or false", 2)
+        end
+        if not live() then
+          return
+        end
+        local ok, problem = pcall(function()
+          button:SetIsEnabled(on)
+          image:SetColorAndOpacity(on and GOLD or GREY)
+        end)
+        if ok then
+          enabled = on
+        else
+          ctx.log(
+            string.format(
+              "mod %s: an arrow could not be %s: %s",
+              ctx.owner,
+              on and "enabled" or "disabled",
+              tostring(problem)
+            )
+          )
+        end
+      end,
+    }
+  end
+
   -- Makes a scroll box fill the rest of the page.
   local function fillSlot(slot, what)
     local okFill = pcall(function()
@@ -308,13 +498,15 @@ function ui.newPage(ctx)
   local function makeRow(hbox, extraCheck, withButtons)
     local rowLive = liveCheck(hbox, "row", extraCheck)
     local row = {}
-    function row.text(_, str)
+    -- opts (optional): { size = "small" } shows the text at 0.7 of its size.
+    function row.text(_, str, opts)
       if not rowLive() then
         return inertText()
       end
+      local small = select(2, textOptions(opts, "row:text", false))
       return makeText(str, function(widget)
-        hbox:AddChildToHorizontalBox(widget)
-      end, extraCheck)
+        centerSlot(hbox:AddChildToHorizontalBox(widget))
+      end, extraCheck, nil, small)
     end
     function row.item(_, name, count)
       if rowLive() then
@@ -322,11 +514,22 @@ function ui.newPage(ctx)
       end
     end
     if withButtons then
-      function row.button(_, label, onClick)
+      -- opts (optional): { small = true } shows a smaller button (a ScaleBox at 0.6).
+      function row.button(_, label, onClick, opts)
         if not rowLive() then
           return inertButton()
         end
-        return makeButton(hbox, label, onClick, extraCheck)
+        if opts ~= nil and (type(opts) ~= "table" or (opts.small ~= nil and type(opts.small) ~= "boolean")) then
+          error("row:button takes an optional table { small = true or false }", 2)
+        end
+        return makeButton(hbox, label, onClick, extraCheck, opts and opts.small)
+      end
+      -- direction is "previous" or "next".
+      function row.arrow(_, direction, onClick)
+        if not rowLive() then
+          return inertArrow()
+        end
+        return makeArrow(hbox, direction, onClick, extraCheck)
       end
     end
     return row
@@ -341,6 +544,7 @@ function ui.newPage(ctx)
     text = inertText,
     item = inertRow.item,
     button = inertButton,
+    arrow = inertArrow,
   }
   local pageWarned = false
   -- A page handle kept past the next build of its page does nothing (and says so once).
@@ -364,16 +568,30 @@ function ui.newPage(ctx)
   local page = {}
 
   -- opts (optional): { wrap = true } makes a long line wrap at the panel's edge instead of running past it.
+  -- { size = "small" } shows the text at 0.7 of its size, left-aligned (it cannot be combined with wrap).
   function page.text(_, str, opts)
     if not pageAlive() then
       return inertText()
     end
-    if opts ~= nil and (type(opts) ~= "table" or (opts.wrap ~= nil and type(opts.wrap) ~= "boolean")) then
-      error("page:text takes an optional table { wrap = true or false }", 2)
-    end
-    return makeText(str, function(widget)
-      ctx.root:AddChildToVerticalBox(widget)
-    end, nil, opts and opts.wrap)
+    local wrap, small = textOptions(opts, "page:text", true)
+    return makeText(str, function(widget, isSmall)
+      local slot = ctx.root:AddChildToVerticalBox(widget)
+      if isSmall then
+        -- A ScaleBox in a vertical box is centered by default: left-align it (unverified call).
+        local ok, problem = pcall(function()
+          slot:SetHorizontalAlignment(H_LEFT)
+        end)
+        if not ok then
+          ctx.log(
+            string.format(
+              "mod %s: a small text could not be left-aligned (unverified call), it may sit in the middle: %s",
+              ctx.owner,
+              tostring(problem)
+            )
+          )
+        end
+      end
+    end, nil, wrap, small)
   end
 
   -- spec: { hint = text shown while empty, onChange = function(text) }
