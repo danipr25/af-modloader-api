@@ -79,6 +79,42 @@ return {
       lu.assertEquals(plan.titlesToRemove(TABS, {}), {})
     end,
 
+    testCatalogOffsetOneMatchesTitlesToPages = function()
+      -- The V menu: Materials, Goods, Stats, Ledger have 3 pages (Materials and Goods share one), so our first tab
+      -- is title 5 and page index 3.
+      local catalog = { "Materials", "Goods", "Stats", "Ledger" }
+      local function catalogState(overrides)
+        local value = { titles = catalog, childCount = 3, tabs = TABS, pageIndex = {}, pageOffset = 1 }
+        for key, item in pairs(overrides) do
+          value[key] = item
+        end
+        return value
+      end
+      local fresh = plan.compute(catalogState({}))
+      lu.assertTrue(fresh.ok)
+      lu.assertEquals(fresh.appendKeys, { "a/one", "a/two" })
+
+      local complete = plan.compute(catalogState({
+        titles = { "Materials", "Goods", "Stats", "Ledger", "One", "Two" },
+        childCount = 5,
+        pageIndex = { ["a/one"] = 3, ["a/two"] = 4 },
+      }))
+      lu.assertTrue(complete.ok)
+      lu.assertEquals(complete.appendKeys, {})
+
+      -- Without the offset the same menu is refused: the page count and the page positions do not match titles.
+      local wrong = plan.compute(catalogState({ pageOffset = 0 }))
+      lu.assertFalse(wrong.ok)
+      lu.assertStrContains(wrong.reason, "tab titles but")
+      local shifted = plan.compute(catalogState({
+        titles = { "Materials", "Goods", "Stats", "Ledger", "One" },
+        childCount = 4,
+        pageIndex = { ["a/one"] = 4 }, -- a title-based position (offset 0) is not the page position here
+      }))
+      lu.assertFalse(shifted.ok)
+      lu.assertStrContains(shifted.reason, "something else")
+    end,
+
     testRefreshDuringABuildIsRefused = function()
       local logs, ran = {}, 0
       local gate = plan.newGate(function(text)

@@ -1,8 +1,11 @@
--- TAB menu tabs. Game-facing, tested in game; the decisions are in tabs_plan.lua (tested without the game).
--- The mechanism comes from docs/tab-menu.md (verified in game 1.1.5023, 2026-10-20): append the title to the tab
--- bar's TitleList, rebuild the bar with PreConstruct, add the page to the panel's WidgetSwitcher.
+-- Menu tabs: one instance for the TAB menu and one for the V menu (the item catalog), each described by a menu
+-- descriptor (tabs.TAB_MENU, tabs.CATALOG_MENU). Game-facing, tested in game; the decisions are in tabs_plan.lua
+-- (tested without the game).
+-- The mechanism comes from docs/tab-menu.md (verified in game 1.1.5023, 2026-10-20) and docs/catalog-menu.md
+-- (verified in a probe, game 1.1.5024, 2026-10-22): append the title to the tab bar's TitleList, rebuild the bar
+-- with PreConstruct, add the page to the panel's WidgetSwitcher.
 -- The live panel is the source of truth: every call to ensure() reads it and plans from what it finds.
--- Calls that docs/tab-menu.md does not cover are marked "unverified" and wrapped so a failure is logged, not fatal.
+-- Calls that the docs do not cover are marked "unverified" and wrapped so a failure is logged, not fatal.
 local clicks = require("clicks")
 local hooks = require("hooks")
 local loop = require("loop")
@@ -10,16 +13,74 @@ local plan = require("tabs_plan")
 local tabbar = require("tabbar")
 local ui = require("ui")
 
-local PANEL_CLASS = "/Game/Blueprints/WBP/PlayerGear/WBP_PlayerGearPanel.WBP_PlayerGearPanel_C"
 local GROUP_CLASS = "/Game/Blueprints/WBP/Utility/WBP_TagSwitcherGroup.WBP_TagSwitcherGroup_C"
 -- Click sources (docs/widgets.md, verified in game 2026-10-21 in a spike). The tile class is not loaded at start.
 local TILE_CLICK_HOOK = ui.CLASS.recipeTile .. ":OnMouseButtonDown"
 local BUTTON_CLICK_HOOK = "/Script/CommonUI.CommonButtonBase:HandleButtonClicked"
 local POLL_MS = 150
+local OPEN_CHECK_MS = 100
 local FAILED_PAGE_TEXT = "This page failed to load, see UE4SS.log"
+
+-- The menu descriptors. Fields:
+--   id, label            the value of the 'menu' option, and the name used in logs
+--   panelClass/panelName the panel's class path and its short class name (FindFirstOf)
+--   groupMember          the panel member that holds the tab bar (a WBP_TagSwitcherGroup_C)
+--   switcherMember       the panel member that holds the pages (a WidgetSwitcher)
+--   allowTreeFallback    look the bar and the switcher up in the widget tree when the member is missing (the
+--                        catalog has two WidgetSwitchers, so it never does)
+--   pageOffset           titles minus pages: the catalog's Materials and Goods share one page (see tabs_plan.lua)
+--   highlightIndex       function(panel, s) -> the tab index to highlight after the bar was rebuilt
+--   pagePadding          optional margin around our pages (the catalog's frame would touch the text otherwise)
+--   paging               the TAB bar is paged when its tabs do not fit (tabbar.lua); the V bar is not
+--   preConstructHook     hook the tab bar group's PreConstruct (TAB only; see Tabs:install)
+--   lazy                 the panel class may not be loaded at start: its hooks are registered when it is
+--   canSelect            tab:select() works in this menu
+--   tagSwitchEvent       optional: the panel's bound OnTagSwitch event; a post hook on it checks that our page shows
+local TAB_MENU = {
+  id = "tab",
+  label = "TAB menu",
+  panelClass = "/Game/Blueprints/WBP/PlayerGear/WBP_PlayerGearPanel.WBP_PlayerGearPanel_C",
+  panelName = "WBP_PlayerGearPanel_C",
+  groupMember = "TagSwithcer",
+  switcherMember = "WidgetSwitcher_0",
+  allowTreeFallback = true,
+  pageOffset = 0,
+  highlightIndex = function(_, s)
+    return s.switcher:GetActiveWidgetIndex() -- unverified call
+  end,
+  paging = true,
+  preConstructHook = true,
+  lazy = false,
+  canSelect = false,
+}
+-- Verified in a probe (docs/catalog-menu.md): the class, the members, the offset. CurrentActivePage as the
+-- highlighted tab is used by the probe and not fully verified. The padding values are a first guess: the in-game
+-- test checks them.
+local CATALOG_MENU = {
+  id = "catalog",
+  label = "V menu",
+  panelClass = "/Game/Blueprints/WBP/CatalogPanel/WBP_CatalogPanel.WBP_CatalogPanel_C",
+  panelName = "WBP_CatalogPanel_C",
+  groupMember = "WBP_TagSwitcherGroup",
+  switcherMember = "SW_Main",
+  allowTreeFallback = false,
+  pageOffset = 1,
+  highlightIndex = function(panel)
+    return panel.CurrentActivePage
+  end,
+  pagePadding = { Left = 24.0, Top = 20.0, Right = 24.0, Bottom = 16.0 },
+  tagSwitchEvent = "BndEvt__WBP_CatalogPanel_WBP_TagSwitcherGroup_K2Node_ComponentBoundEvent_0_"
+    .. "OnTagSwitch__DelegateSignature",
+  paging = false,
+  preConstructHook = false,
+  lazy = true,
+  canSelect = true,
+}
 
 local isValid = ui.isValid
 local tabs = {}
+tabs.TAB_MENU = TAB_MENU
+tabs.CATALOG_MENU = CATALOG_MENU
 local Tabs = {}
 Tabs.__index = Tabs
 
@@ -61,18 +122,24 @@ local function findInTree(className, tree)
 end
 
 -- The parts of the panel we need, or nil and the reason the menu does not look as expected.
-local function structure(panel)
+local function structure(panel, menu)
   local tree = member(panel, "WidgetTree")
   if not tree then
     return nil, "the panel has no WidgetTree"
   end
-  local group = member(panel, "TagSwithcer") or findInTree("WBP_TagSwitcherGroup_C", tree)
-  if not group then
-    return nil, "the tab bar (TagSwithcer, a WBP_TagSwitcherGroup_C) was not found"
+  local group = member(panel, menu.groupMember)
+  if not group and menu.allowTreeFallback then
+    group = findInTree("WBP_TagSwitcherGroup_C", tree)
   end
-  local switcher = member(panel, "WidgetSwitcher_0") or findInTree("WidgetSwitcher", tree)
+  if not group then
+    return nil, string.format("the tab bar (%s, a WBP_TagSwitcherGroup_C) was not found", menu.groupMember)
+  end
+  local switcher = member(panel, menu.switcherMember)
+  if not switcher and menu.allowTreeFallback then
+    switcher = findInTree("WidgetSwitcher", tree)
+  end
   if not switcher then
-    return nil, "the page switcher (WidgetSwitcher_0) was not found"
+    return nil, string.format("the page switcher (%s) was not found", menu.switcherMember)
   end
   if not member(group, "EntryPanel") then
     return nil, "the tab bar has no EntryPanel"
@@ -83,7 +150,7 @@ local function structure(panel)
   if not okLists then
     return nil, "the tab bar has no TitleList or EntryList"
   end
-  return { tree = tree, group = group, switcher = switcher }
+  return { panel = panel, tree = tree, group = group, switcher = switcher }
 end
 
 local function readTitles(group)
@@ -102,13 +169,13 @@ local function rebuildBar(group)
   group:PreConstruct(false)
 end
 
--- Keeps the highlight on the page that is showing. Unverified: GetActiveWidgetIndex.
-local function restoreHighlight(s, log)
+-- Keeps the highlight on the tab that is showing (the descriptor says where to read it). Unverified.
+local function restoreHighlight(s, menu, log)
   local ok, problem = pcall(function()
-    s.group:SetActive(s.switcher:GetActiveWidgetIndex())
+    s.group:SetActive(menu.highlightIndex(s.panel, s))
   end)
   if not ok then
-    log("could not restore the highlighted tab (unverified GetActiveWidgetIndex): " .. tostring(problem))
+    log("could not restore the highlighted tab in the " .. menu.label .. " (unverified): " .. tostring(problem))
   end
 end
 
@@ -146,23 +213,34 @@ local function removeTrailingTitles(group, count)
   end
 end
 
--- options: { registry = registry object, log = function(text) }
+-- options: {
+--   registry = registry object, log = function(text), menu = tabs.TAB_MENU or tabs.CATALOG_MENU,
+--   onGroupPreConstruct = function() (optional) called when a tab bar group of any panel is about to be built,
+--   onPanelReady = function() (optional) called when this menu's panel is known to be loaded,
+--   onButtonClick = function(address) (optional) also given the address of every clicked game button }
 function tabs.new(options)
   local self = setmetatable({}, Tabs)
+  self.menu = options.menu or TAB_MENU
   self.registry = options.registry
   self.log = options.log
+  self.onGroupPreConstruct = options.onGroupPreConstruct
+  self.onPanelReady = options.onPanelReady
+  self.onButtonClick = options.onButtonClick
   self.state = nil -- the current panel: { panel, address, tree, pages = { [tab key] = { entry, root, session } } }
   self.busy = false -- our own rebuild fires the hooks again
   self.gate = plan.newGate(options.log) -- refuses tab:refresh() while a page is being built
   self.clicks = clicks.new(options.log) -- routes clicks on our buttons and tiles to the mods
-  self.bar = tabbar.new({ -- pages the tab bar when the tabs do not fit; its arrows are clicked through the router
-    log = options.log,
-    clicks = self.clicks,
-    route = function(context)
-      self:routeClick(context)
-    end,
-  })
+  if self.menu.paging then
+    self.bar = tabbar.new({ -- pages the tab bar when the tabs do not fit; its arrows are clicked through the router
+      log = options.log,
+      clicks = self.clicks,
+      route = function(context)
+        self:routeClick(context)
+      end,
+    })
+  end
   self.tileHook = "none" -- "none", "requested" (handed to hooks.install), "scheduled" or "registered"
+  self.panelHooks = "none" -- lazy menus: "none", "scheduled" or "registered"
   self.disabled = false
   self.stopPolling = nil
   return self
@@ -172,7 +250,9 @@ function Tabs:disable(reason)
   if not self.disabled then
     self.disabled = true
     self.log(
-      "AF tabs are off: the TAB menu does not look the way this version expects ("
+      "AF tabs are off: the "
+        .. self.menu.label
+        .. " does not look the way this version expects ("
         .. reason
         .. "). Mods that add tabs will not show them. The game was not changed."
     )
@@ -257,6 +337,27 @@ local function removePages(state)
   end
 end
 
+-- Pads a page inside the switcher (the descriptor's pagePadding). Unverified: SetPadding on the switcher's slot.
+-- A failure is logged once and the page is left as it is.
+function Tabs:padPage(slot)
+  local padding = self.menu.pagePadding
+  if padding == nil then
+    return
+  end
+  local ok, problem = pcall(function()
+    slot:SetPadding(padding)
+  end)
+  if not ok and not self.loggedPaddingFailure then
+    self.loggedPaddingFailure = true
+    self.log(
+      "could not pad the pages in the "
+        .. self.menu.label
+        .. " (unverified SetPadding), they may touch the frame: "
+        .. tostring(problem)
+    )
+  end
+end
+
 function Tabs:apply(state, s, appendKeys)
   local byKey = self.registry.tabsByKey
   local created = {}
@@ -269,7 +370,7 @@ function Tabs:apply(state, s, appendKeys)
       state.pages[key] = record
       created[#created + 1] = key
       self:fill(state, record)
-      s.switcher:AddChild(record.root)
+      self:padPage(s.switcher:AddChild(record.root))
     end
     local titles = s.group.TitleList
     for _, key in ipairs(appendKeys) do
@@ -302,7 +403,7 @@ function Tabs:apply(state, s, appendKeys)
     end
     error(problem, 0)
   end
-  restoreHighlight(s, self.log)
+  restoreHighlight(s, self.menu, self.log)
 end
 
 -- Makes sure every registered tab is in this panel exactly once. Safe to call as often as the hooks fire.
@@ -311,10 +412,18 @@ function Tabs:ensure(panel, origin)
   if self.busy or self.disabled or not isValid(panel) then
     return false
   end
+  local registered = {}
+  for _, entry in ipairs(self.registry:tabs(self.menu.id)) do
+    registered[#registered + 1] = { key = entry.key, title = entry.title }
+  end
+  if #registered == 0 and self.menu.lazy then
+    return false -- no mod put a tab in this menu: nothing to check, nothing to log
+  end
   self.busy = true
   local healthy = false
+  local label = self.menu.label
   local ok, problem = pcall(function()
-    local s, reason = structure(panel)
+    local s, reason = structure(panel, self.menu)
     if not s then
       self:disable(reason)
       return
@@ -322,12 +431,11 @@ function Tabs:ensure(panel, origin)
     local state = self:stateFor(panel)
     state.tree = s.tree
 
-    local registered, pageIndex = {}, {}
-    for _, entry in ipairs(self.registry:tabs()) do
-      registered[#registered + 1] = { key = entry.key, title = entry.title }
-      local record = state.pages[entry.key]
+    local pageIndex = {}
+    for _, tab in ipairs(registered) do
+      local record = state.pages[tab.key]
       if record and isValid(record.root) then
-        pageIndex[entry.key] = childIndex(s.switcher, record.root)
+        pageIndex[tab.key] = childIndex(s.switcher, record.root)
       end
     end
     local result = plan.compute({
@@ -335,12 +443,15 @@ function Tabs:ensure(panel, origin)
       childCount = s.switcher:GetChildrenCount(),
       tabs = registered,
       pageIndex = pageIndex,
+      pageOffset = self.menu.pageOffset,
     })
     if not result.ok then
       if state.refused ~= result.reason then
         state.refused = result.reason
         self.log(
-          "AF tabs were not added to this TAB menu: "
+          "AF tabs were not added to this "
+            .. label
+            .. ": "
             .. result.reason
             .. ". The menu was left as it is. To fix it, load the save again or restart the game."
         )
@@ -353,7 +464,8 @@ function Tabs:ensure(panel, origin)
       -- Logged on every check on purpose: this is how the in-game test sees the order the hooks fire in.
       self.log(
         string.format(
-          "TAB menu check (%s): all tabs present (buttons %d, titles %d, pages %d)",
+          "%s check (%s): all tabs present (buttons %d, titles %d, pages %d)",
+          label,
           origin,
           #s.group.EntryList,
           #s.group.TitleList,
@@ -365,7 +477,8 @@ function Tabs:ensure(panel, origin)
       self:apply(state, s, result.appendKeys)
       self.log(
         string.format(
-          "TAB menu check (%s): added %d tab(s) (before: %s; after: buttons %d, titles %d, pages %d)",
+          "%s check (%s): added %d tab(s) (before: %s; after: buttons %d, titles %d, pages %d)",
+          label,
           origin,
           #result.appendKeys,
           before,
@@ -378,26 +491,89 @@ function Tabs:ensure(panel, origin)
   end)
   self.busy = false
   if not ok then
-    self.log("could not update the TAB menu: " .. tostring(problem))
+    self.log("could not update the " .. label .. ": " .. tostring(problem))
   end
   return ok and healthy
 end
 
 -- Pages the tab bar for the panel that just opened, or gives the game's bar back when 'healthy' is false (the tabs
--- could not be added, so nothing may stay hidden). Never raises.
+-- could not be added, so nothing may stay hidden). Never raises. Only menus with paging (the TAB menu).
 function Tabs:updateBar(panel, healthy)
   local state = self.state
-  if not (state and isValid(panel) and state.address == addressOf(panel)) then
+  if not (self.bar and state and isValid(panel) and state.address == addressOf(panel)) then
     return
   end
   local ok, problem = pcall(function()
-    local s = structure(panel)
+    local s = structure(panel, self.menu)
     if s then
       self.bar:update(state, s.group, healthy)
     end
   end)
   if not ok then
-    self.log("could not page the TAB bar: " .. tostring(problem))
+    self.log("could not page the " .. self.menu.label .. " bar: " .. tostring(problem))
+  end
+end
+
+-- What happens every time the menu opens (BP_OnActivated, or the deferred first check of a lazy menu).
+function Tabs:onActivated(panel)
+  self.registry:seal()
+  local healthy = self:ensure(panel, "BP_OnActivated")
+  self:updateBar(panel, healthy)
+  if isValid(panel) and self.state and self.state.address == addressOf(panel) then
+    self.state.active = true
+    self:startPolling()
+  end
+  if self.onPanelReady then
+    local ok, problem = pcall(self.onPanelReady)
+    if not ok then
+      self.log("could not prepare the " .. self.menu.label .. " item sheets: " .. tostring(problem))
+    end
+  end
+end
+
+-- Safety net, after the game handled a tab click (post hook on the bound OnTagSwitch event): when the tab is one of
+-- ours and the switcher does not show our page, say so once and show it, as the probe did. The game's own rule
+-- (tab - 1) should make this unnecessary. Unverified: GetActiveWidget.
+function Tabs:onTagSwitch(panel, index)
+  local state = self.state
+  if not (state and isValid(panel) and state.address == addressOf(panel) and type(index) == "number") then
+    return
+  end
+  local s = structure(panel, self.menu)
+  if not s then
+    return
+  end
+  local titles = readTitles(s.group)
+  local title = titles[index + 1]
+  if title == nil then
+    return
+  end
+  for _, record in pairs(state.pages) do
+    if record.entry.title == title and isValid(record.root) then
+      local active = s.switcher:GetActiveWidget()
+      if isValid(active) and addressOf(active) == addressOf(record.root) then
+        return
+      end
+      if not self.loggedTagSwitch then
+        self.loggedTagSwitch = true
+        self.log(
+          string.format(
+            'the %s did not show the page of the tab "%s" by itself: showing it (logged once)',
+            self.menu.label,
+            title
+          )
+        )
+      end
+      s.switcher:SetActiveWidget(record.root)
+      return
+    end
+  end
+end
+
+function Tabs:onDeactivated()
+  self:stopPollingNow()
+  if self.state then
+    self.state.active = false
   end
 end
 
@@ -420,7 +596,51 @@ function Tabs:refresh(entry)
   end)
 end
 
--- Polls the text of the inputs that have an onChange, while the TAB menu is open (see docs/api.md: onChange).
+-- tab:select(): selects the tab when the menu is open and the tab is in it. Catalog tabs only in this version (the
+-- tab bar's OnEntryClick from Lua is verified for the V menu in a probe only). The click is deferred to the game
+-- thread, out of the caller (which is usually a click callback). Returns true when it was scheduled.
+function Tabs:select(entry)
+  if not self.menu.canSelect then
+    return false
+  end
+  local state = self.state
+  if not (state and state.active and isValid(state.panel)) then
+    return false
+  end
+  local record = state.pages[entry.key]
+  if not (record and isValid(record.root)) then
+    return false
+  end
+  local okRead, group, index = pcall(function()
+    local s = structure(state.panel, self.menu)
+    if not s then
+      return nil
+    end
+    local titles = readTitles(s.group)
+    for position, title in ipairs(titles) do
+      if title == entry.title then
+        return s.group, position - 1
+      end
+    end
+  end)
+  if not okRead or group == nil or index == nil then
+    return false
+  end
+  ExecuteInGameThread(function()
+    if not (state.active and isValid(group)) then
+      return
+    end
+    local ok, problem = pcall(function()
+      group:OnEntryClick(index)
+    end)
+    if not ok then
+      self.log(string.format('mod %s: could not select the tab "%s": %s', entry.owner, entry.title, tostring(problem)))
+    end
+  end)
+  return true
+end
+
+-- Polls the text of the inputs that have an onChange, while the menu is open (see docs/api.md: onChange).
 function Tabs:poll()
   local state = self.state
   if not state or not state.active then
@@ -493,7 +713,7 @@ function Tabs:cleanup()
     return
   end
   local registered = {}
-  for _, entry in ipairs(self.registry:tabs()) do
+  for _, entry in ipairs(self.registry:tabs(self.menu.id)) do
     registered[#registered + 1] = { key = entry.key, title = entry.title }
   end
   local pageKeys = {}
@@ -507,7 +727,7 @@ function Tabs:cleanup()
     return
   end
   local ok, problem = pcall(function()
-    local s = structure(state.panel)
+    local s = structure(state.panel, self.menu)
     if not s then
       return
     end
@@ -518,20 +738,24 @@ function Tabs:cleanup()
       s.switcher:SetActiveWidgetIndex(0)
     end
     rebuildBar(s.group)
-    restoreHighlight(s, self.log)
+    restoreHighlight(s, self.menu, self.log)
   end)
   if not ok then
-    self.log("could not remove the tabs from the TAB menu on unload: " .. tostring(problem))
+    self.log("could not remove the tabs from the " .. self.menu.label .. " on unload: " .. tostring(problem))
   end
 end
 
 -- A click on a tile or a button of the game. These hooks fire for every tile and every CommonUI button in the game,
--- so anything that is not ours (or any click while the TAB menu is closed) returns at once, without a log line.
+-- so anything that is not ours (or any click while the menu is closed) returns at once, without a log line. Every
+-- instance hooks the same functions and answers only for the widgets of its own pages.
 function Tabs:routeClick(context)
   local state = self.state
   local open = state ~= nil and state.active == true and isValid(state.panel)
-  local address = open and addressOf(paramValue(context)) or nil
+  local address = (open or self.onButtonClick) and addressOf(paramValue(context)) or nil
   self.clicks:route(address, open)
+  if self.onButtonClick and address ~= nil then
+    self.onButtonClick(address)
+  end
 end
 
 -- Registers the tile click hook once the first tile exists (its class may not have been loaded before). Called
@@ -576,8 +800,110 @@ function Tabs:ensureTileHook(class)
   end)
 end
 
+-- The hooks on the menu's panel (and, for the TAB menu, on its tab bar group).
+function Tabs:panelEntries()
+  local menu, label = self.menu, self.menu.label
+  local entries = {
+    {
+      path = menu.panelClass .. ":BP_OnActivated",
+      effect = "Tabs added by mods will not appear in the " .. label .. ".",
+      fn = function(context)
+        self:onActivated(paramValue(context))
+      end,
+    },
+    {
+      path = menu.panelClass .. ":BP_OnDeactivated",
+      effect = "Typing in inputs of the tabs will not be reported while the menu is closed.",
+      fn = function()
+        self:onDeactivated()
+      end,
+    },
+  }
+  if menu.tagSwitchEvent then
+    entries[#entries + 1] = {
+      path = menu.panelClass .. ":" .. menu.tagSwitchEvent,
+      effect = "The V menu relies on the game alone to show the pages of mod tabs.",
+      fn = function(context, index)
+        local ok, problem = pcall(self.onTagSwitch, self, paramValue(context), paramValue(index))
+        if not ok then
+          self.log("could not check the page of the selected " .. menu.label .. " tab: " .. tostring(problem))
+        end
+      end,
+    }
+  end
+  if menu.preConstructHook then
+    entries[#entries + 1] = {
+      path = GROUP_CLASS .. ":PreConstruct",
+      effect = "Tabs may need one more menu open to appear.",
+      fn = function(context)
+        self.registry:seal()
+        if self.onGroupPreConstruct then
+          -- Only schedules work (the V menu's hooks); nothing here touches a tab bar.
+          local okNeighbour, neighbourProblem = pcall(self.onGroupPreConstruct)
+          if not okNeighbour then
+            self.log("could not check for the V menu: " .. tostring(neighbourProblem))
+          end
+        end
+        if self.busy then
+          return
+        end
+        -- The tab bar is used by five panels: only this menu's matters.
+        local panel = FindFirstOf(menu.panelName)
+        local group = paramValue(context)
+        if isValid(panel) and isValid(group) then
+          local s = structure(panel, menu)
+          if s and addressOf(s.group) == addressOf(group) then
+            -- The tab bar is never changed from here: doing it inside the group's PreConstruct crashed the game
+            -- (1.1.5024, 2026-10-22). BP_OnActivated follows every open and applies the window there.
+            self:ensure(panel, "group PreConstruct")
+          end
+        end
+      end,
+    }
+  end
+  return entries
+end
+
+-- Lazy menus (the V menu): the panel class is not loaded at start, so its hooks cannot be registered then. The
+-- group PreConstruct hook of the TAB instance calls this for every tab bar the game builds, including the V menu's.
+-- Nothing is touched here: once the panel exists, the registration is deferred to the game thread, and in that
+-- deferred call the menu is checked at once if it is already open (unverified IsActivated), because the first
+-- BP_OnActivated may have come before the hooks existed. If the timing fails, the tab appears on the next open.
+function Tabs:panelMayBeLoaded()
+  if not self.menu.lazy or self.panelHooks ~= "none" then
+    return
+  end
+  local okFind, panel = pcall(FindFirstOf, self.menu.panelName)
+  if not okFind or not isValid(panel) then
+    return
+  end
+  self.panelHooks = "scheduled"
+  ExecuteInGameThread(function()
+    hooks.install(self:panelEntries(), self.log)
+    self.panelHooks = "registered"
+    if self.onPanelReady then
+      pcall(self.onPanelReady)
+    end
+    -- The check of a menu that is already open comes later, out of the hooked PreConstruct that is still on the
+    -- stack here: rebuilding the tab bar inside its own PreConstruct crashed the game (docs/tab-menu.md).
+    ExecuteWithDelay(OPEN_CHECK_MS, function()
+      ExecuteInGameThread(function()
+        local okLive, live = pcall(FindFirstOf, self.menu.panelName)
+        if not okLive or not isValid(live) then
+          return
+        end
+        local okOpen, open = pcall(function()
+          return live:IsActivated()
+        end)
+        if okOpen and open == true then
+          self:onActivated(live)
+        end
+      end)
+    end)
+  end)
+end
+
 function Tabs:install()
-  local registry = self.registry
   local entries = {
     {
       path = BUTTON_CLICK_HOOK,
@@ -586,52 +912,20 @@ function Tabs:install()
         self:routeClick(context)
       end,
     },
-    {
-      path = PANEL_CLASS .. ":BP_OnActivated",
-      effect = "Tabs added by mods will not appear in the TAB menu.",
-      fn = function(context)
-        registry:seal()
-        local panel = paramValue(context)
-        local healthy = self:ensure(panel, "BP_OnActivated")
-        self:updateBar(panel, healthy)
-        if isValid(panel) and self.state and self.state.address == addressOf(panel) then
-          self.state.active = true
-          self:startPolling()
-        end
-      end,
-    },
-    {
-      path = PANEL_CLASS .. ":BP_OnDeactivated",
-      effect = "Typing in inputs of the tabs will not be reported while the menu is closed.",
-      fn = function()
-        self:stopPollingNow()
-        if self.state then
-          self.state.active = false
-        end
-      end,
-    },
-    {
-      path = GROUP_CLASS .. ":PreConstruct",
-      effect = "Tabs may need one more menu open to appear.",
-      fn = function(context)
-        registry:seal()
-        if self.busy then
-          return
-        end
-        -- The tab bar is used by five panels: only the TAB menu's matters.
-        local panel = FindFirstOf("WBP_PlayerGearPanel_C")
-        local group = paramValue(context)
-        if isValid(panel) and isValid(group) then
-          local s = structure(panel)
-          if s and addressOf(s.group) == addressOf(group) then
-            -- The tab bar is never changed from here: doing it inside the group's PreConstruct crashed the game
-            -- (1.1.5024, 2026-10-22). BP_OnActivated follows every open and applies the window there.
-            self:ensure(panel, "group PreConstruct")
-          end
-        end
-      end,
-    },
   }
+  if not self.menu.lazy then
+    for _, entry in ipairs(self:panelEntries()) do
+      entries[#entries + 1] = entry
+    end
+  else
+    local okPanel, panelClass = pcall(StaticFindObject, self.menu.panelClass)
+    if okPanel and isValid(panelClass) then
+      self.panelHooks = "registered"
+      for _, entry in ipairs(self:panelEntries()) do
+        entries[#entries + 1] = entry
+      end
+    end
+  end
   -- The tile class may already be loaded at start: then its hook is registered like the others, with retries.
   -- Otherwise it waits for the first tile (ensureTileHook).
   local okFind, tileClass = pcall(StaticFindObject, ui.CLASS.recipeTile)

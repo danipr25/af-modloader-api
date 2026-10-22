@@ -123,6 +123,79 @@ return {
       lu.assertNil(registry.commandNameProblem("af.thing", "af-modloader-api", "af-modloader-api"))
     end,
 
+    testMenuOptionIsValidatedAndTabsAreFilteredByMenu = function()
+      local reg, logs = newRegistry()
+      local api = reg:use(fakeAF("recipes"))
+      local catalogSpec = tabSpec("vmenu", "Recipes")
+      catalogSpec.menu = "catalog"
+      api.tabs.add(catalogSpec)
+      api.tabs.add(tabSpec("other", "Other")) -- no menu: the TAB menu
+      local tabMenuSpec = tabSpec("explicit", "Explicit")
+      tabMenuSpec.menu = "tab"
+      api.tabs.add(tabMenuSpec)
+      lu.assertEquals(#reg:tabs(), 3)
+      lu.assertEquals(#reg:tabs("catalog"), 1)
+      lu.assertEquals(reg:tabs("catalog")[1].key, "recipes/vmenu")
+      lu.assertEquals(#reg:tabs("tab"), 2)
+
+      for _, bad in ipairs({ "TAB", "v", "", 3, true }) do
+        local spec = tabSpec("bad", "Bad")
+        spec.menu = bad
+        lu.assertErrorMsgContains("'menu' must be", api.tabs.add, spec)
+      end
+      -- The game's own titles are per menu.
+      local materials = tabSpec("mat", "Materials")
+      materials.menu = "catalog"
+      lu.assertErrorMsgContains("game's own tabs", api.tabs.add, materials)
+      api.tabs.add(tabSpec("mat", "Materials")) -- fine in the TAB menu
+      -- Titles are unique across both menus.
+      local clash = tabSpec("clash", "Recipes")
+      clash.menu = "catalog"
+      local before = #reg:tabs()
+      reg:use(fakeAF("other")).tabs.add(clash) -- refused and logged, the mod keeps an inert tab
+      lu.assertEquals(#reg:tabs(), before)
+      lu.assertEquals(#logs, 1)
+      lu.assertStrContains(logs[1], "already uses that title")
+    end,
+
+    testSelectIsForwardedAndInertTabsReturnFalse = function()
+      local reg = newRegistry()
+      local selected = {}
+      reg.onTabSelect = function(entry)
+        selected[#selected + 1] = entry.key
+        return true
+      end
+      local api = reg:use(fakeAF("recipes"))
+      local spec = tabSpec("main", "Recipes")
+      spec.menu = "catalog"
+      local tab = api.tabs.add(spec)
+      lu.assertTrue(tab:select())
+      lu.assertEquals(selected, { "recipes/main" })
+      local refused = api.tabs.add(tabSpec("main", "Other title")) -- duplicate id: inert
+      lu.assertFalse(refused:select())
+      local bare = newRegistry():use(fakeAF("recipes")).tabs.add(tabSpec("main", "Recipes"))
+      lu.assertFalse(bare:select()) -- no game module connected
+    end,
+
+    testSectionsAreValidatedAndSealedLikeTabs = function()
+      local reg, logs = newRegistry()
+      local api = reg:use(fakeAF("recipes"))
+      local function section(id)
+        return { id = id, build = function() end }
+      end
+      lu.assertTrue(api.catalog.section(section("cauldron")))
+      lu.assertEquals(#reg:sections(), 1)
+      lu.assertEquals(reg:sections()[1].key, "recipes/cauldron")
+      lu.assertFalse(api.catalog.section(section("cauldron"))) -- duplicate: refused and logged, the mod keeps running
+      lu.assertEquals(#logs, 1)
+      lu.assertTrue(reg:use(fakeAF("other")).catalog.section(section("cauldron"))) -- ids are per mod
+      lu.assertErrorMsgContains("catalog.section needs a table", api.catalog.section, nil)
+      lu.assertErrorMsgContains("'id' must be", api.catalog.section, section("Bad Id"))
+      lu.assertErrorMsgContains("'build' must be", api.catalog.section, { id = "x" })
+      reg:seal()
+      lu.assertErrorMsgContains("too late", api.catalog.section, section("late"))
+    end,
+
     testBadSpecRaisesAClearError = function()
       local api = newRegistry():use(fakeAF("recipes"))
       lu.assertErrorMsgContains("console.add needs a table", api.console.add, nil)
