@@ -15,10 +15,14 @@ end
 --   childCount how many pages the panel's WidgetSwitcher holds
 --   tabs       the registered tabs in registration order: { key = ..., title = ... }
 --   pageIndex  key -> 0-based index in the WidgetSwitcher of the page we created for that tab (only live pages)
+--   pageOffset (optional, default 0) how many more titles than pages the menu has: the TAB menu has one page per
+--              title (0); the V menu's Materials and Goods share one page (1). The page of the title at position
+--              p (1-based) is then child p - 1 - pageOffset.
 -- Returns { ok = true, appendKeys = { keys of the tabs to add, in order } }, or { ok = false, reason = text }.
 -- On a refusal nothing must be changed in the panel.
 function plan.compute(state)
   local titles, tabs = state.titles, state.tabs
+  local offset = state.pageOffset or 0
   local count = #titles
   local firstIndex = {}
   for index, title in ipairs(titles) do
@@ -50,16 +54,17 @@ function plan.compute(state)
   -- The tabs already there must be the last ones, in registration order, with their pages in the same places.
   for position = 1, present do
     local expected = count - present + position
-    if firstIndex[tabs[position].title] ~= expected or state.pageIndex[tabs[position].key] ~= expected - 1 then
+    if firstIndex[tabs[position].title] ~= expected or state.pageIndex[tabs[position].key] ~= expected - 1 - offset then
       return refuse('something else was added to the menu around the tab "' .. tabs[position].title .. '"')
     end
   end
-  if state.childCount ~= count then
+  if state.childCount ~= count - offset then
     return refuse(
       string.format(
-        "the menu has %d tab titles but %d pages, so tabs cannot be matched to pages",
+        "the menu has %d tab titles but %d pages (expected %d), so tabs cannot be matched to pages",
         count,
-        state.childCount
+        state.childCount,
+        count - offset
       )
     )
   end

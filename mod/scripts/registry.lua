@@ -1,5 +1,5 @@
--- Registry of the tabs and console commands that mods declare. Pure Lua with no game access, so it is tested
--- without the game (tests/test_registry.lua). Mods reach it through the handle that use(AF) returns.
+-- Registry of the tabs, item sheet sections and console commands that mods declare. Pure Lua with no game access,
+-- so it is tested without the game (tests/test_registry.lua). Mods reach it through the handle that use(AF) returns.
 local registry = {}
 
 local Registry = {}
@@ -9,8 +9,13 @@ local NAMESPACE_MIN = 3
 local NAME_MAX = 64
 local TITLE_MAX = 40
 local TAB_ID_MAX = 32
--- Titles of the game's own tabs: a mod tab with one of these could not be told apart from the game's.
-local GAME_TITLES = { Player = true, World = true, Recognition = true }
+-- The menus a tab can go in: "tab" is the TAB menu (the default), "catalog" the V menu (the item catalog).
+local MENUS = { tab = true, catalog = true }
+-- Titles of the game's own tabs, per menu: a mod tab with one of these could not be told apart from the game's.
+local GAME_TITLES = {
+  tab = { Player = true, World = true, Recognition = true },
+  catalog = { Materials = true, Goods = true, Stats = true, Ledger = true },
+}
 
 -- A table that raises an error when written to. It is not a security boundary: it stops accidental changes to the
 -- shared API that every mod uses.
@@ -73,7 +78,9 @@ function registry.new(options)
   self.sealed = false
   self.tabList = {} -- tab entries in registration order
   self.tabsByKey = {} -- "<mod id>/<tab id>" -> entry
-  self.tabsByTitle = {} -- title -> entry
+  self.tabsByTitle = {} -- title -> entry (titles are unique across both menus)
+  self.sectionList = {} -- item sheet sections in registration order
+  self.sectionsByKey = {} -- "<mod id>/<section id>" -> entry
   self.commandList = {}
   self.commandsByName = {} -- registered lowercase name -> entry
   self.commandsByAlias = {} -- uppercase alias -> entry
@@ -81,9 +88,11 @@ function registry.new(options)
   -- Optional callbacks, set by the game-facing modules:
   --   onCommandAdded(entry) registers the name with the console
   --   onTabRefresh(entry)   rebuilds the page of a tab
+  --   onTabSelect(entry)    selects the tab in its menu; returns whether it was scheduled
   --   worldCurrent()        the current world (a fresh copy) or nil
   self.onCommandAdded = nil
   self.onTabRefresh = nil
+  self.onTabSelect = nil
   self.worldCurrent = nil
   return self
 end
@@ -116,6 +125,14 @@ function Registry:addTab(owner, spec)
       'tabs.add needs a table: { id = "recipes", title = "My Tab", build = function(page) ... end }',
       "invalid"
   end
+  local menu = spec.menu
+  if menu == nil then
+    menu = "tab"
+  elseif type(menu) ~= "string" or not MENUS[menu] then
+    return nil,
+      'tabs.add: \'menu\' must be "tab" (the TAB menu, the default) or "catalog" (the V menu), not ' .. tostring(menu),
+      "invalid"
+  end
   local id, title = spec.id, spec.title
   if type(id) ~= "string" or #id > TAB_ID_MAX or not id:find("^[a-z0-9][a-z0-9_-]*$") then
     return nil,
@@ -128,7 +145,7 @@ function Registry:addTab(owner, spec)
   if type(spec.build) ~= "function" then
     return nil, "tabs.add: 'build' must be a function(page) that fills the page", "invalid"
   end
-  if GAME_TITLES[title] then
+  if GAME_TITLES[menu][title] then
     return nil,
       string.format('tabs.add: the title "%s" is used by the game\'s own tabs, choose another', title),
       "invalid"
@@ -144,7 +161,7 @@ function Registry:addTab(owner, spec)
       string.format('mod %s cannot add a tab titled "%s": mod %s already uses that title', owner, title, other.owner),
       "duplicate"
   end
-  local entry = { owner = owner, id = id, key = key, title = title, build = spec.build }
+  local entry = { owner = owner, id = id, key = key, title = title, build = spec.build, menu = menu }
   local registryRef = self
   entry.handle = registry.readonly({
     refresh = function()
@@ -152,10 +169,45 @@ function Registry:addTab(owner, spec)
         registryRef.onTabRefresh(entry)
       end
     end,
+    select = function()
+      if registryRef.onTabSelect then
+        return registryRef.onTabSelect(entry) == true
+      end
+      return false
+    end,
   }, "a tab")
   self.tabList[#self.tabList + 1] = entry
   self.tabsByKey[key] = entry
   self.tabsByTitle[title] = entry
+  return entry
+end
+
+-- Item sheet sections of the V menu. Returns an entry, or nil plus the problem and its kind (like addTab).
+function Registry:addSection(owner, spec)
+  if self.sealed then
+    return nil, lateMessage("catalog.section"), "late"
+  end
+  if type(spec) ~= "table" then
+    return nil,
+      'catalog.section needs a table: { id = "cauldron", build = function(section, itemName) ... end }',
+      "invalid"
+  end
+  local id = spec.id
+  if type(id) ~= "string" or #id > TAB_ID_MAX or not id:find("^[a-z0-9][a-z0-9_-]*$") then
+    return nil,
+      "catalog.section: 'id' must be 1 to " .. TAB_ID_MAX .. " lowercase letters, digits, '-' or '_', like \"info\"",
+      "invalid"
+  end
+  if type(spec.build) ~= "function" then
+    return nil, "catalog.section: 'build' must be a function(section, itemName) that fills the section", "invalid"
+  end
+  local key = owner .. "/" .. id
+  if self.sectionsByKey[key] then
+    return nil, string.format("mod %s already added a section with id '%s'", owner, id), "duplicate"
+  end
+  local entry = { owner = owner, id = id, key = key, build = spec.build }
+  self.sectionList[#self.sectionList + 1] = entry
+  self.sectionsByKey[key] = entry
   return entry
 end
 
@@ -211,8 +263,22 @@ function Registry:findCommand(typed)
   return nil
 end
 
-function Registry:tabs()
-  return { table.unpack(self.tabList) }
+-- The tabs in registration order. With 'menu' ("tab" or "catalog"), only the tabs of that menu.
+function Registry:tabs(menu)
+  if menu == nil then
+    return { table.unpack(self.tabList) }
+  end
+  local list = {}
+  for _, entry in ipairs(self.tabList) do
+    if entry.menu == menu then
+      list[#list + 1] = entry
+    end
+  end
+  return list
+end
+
+function Registry:sections()
+  return { table.unpack(self.sectionList) }
 end
 
 -- Commands sorted by name.
@@ -266,7 +332,12 @@ function Registry:use(AF)
   end
   local owner = AF.modId
   local registryRef = self
-  local inertTab = registry.readonly({ refresh = function() end }, "a tab")
+  local inertTab = registry.readonly({
+    refresh = function() end,
+    select = function()
+      return false
+    end,
+  }, "a tab")
 
   local tabs = {}
   function tabs.add(spec)
@@ -278,6 +349,19 @@ function Registry:use(AF)
       -- Refused, but the mod keeps running: it gets a tab that does nothing.
       registryRef.log(string.format("%s: tab refused: %s", owner, problem))
       return inertTab
+    end
+    error(problem, 2)
+  end
+
+  local catalog = {}
+  function catalog.section(spec)
+    local entry, problem, kind = registryRef:addSection(owner, spec)
+    if entry then
+      return true
+    end
+    if kind == "duplicate" then
+      registryRef.log(string.format("%s: section refused: %s", owner, problem))
+      return false
     end
     error(problem, 2)
   end
@@ -313,6 +397,7 @@ function Registry:use(AF)
     version = self.version,
     world = registry.readonly(world, "api.world"),
     tabs = registry.readonly(tabs, "api.tabs"),
+    catalog = registry.readonly(catalog, "api.catalog"),
     console = registry.readonly(console, "api.console"),
   }, "the API handle")
 end
