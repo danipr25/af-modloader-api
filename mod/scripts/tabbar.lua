@@ -224,6 +224,12 @@ function Bar:moveBoxLast(rec)
     moved:SetVerticalAlignment(vertical)
   end)
   if not ok then
+    -- If the box left the overlay but was not added back, put it back at once: the pages must never disappear.
+    pcall(function()
+      if not isValid(geometry.box:GetParent()) then
+        geometry.overlay:AddChildToOverlay(geometry.box)
+      end
+    end)
     self:note(
       rec,
       "order",
