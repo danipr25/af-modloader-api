@@ -274,18 +274,19 @@ function ui.newPage(ctx)
         if not live() then
           return
         end
-        enabled = on
         local ok, problem = pcall(function()
           button:SetIsEnabled(on)
         end)
-        if not ok then
+        if ok then
+          enabled = on -- the routing flag changes only when the game accepted the change
+        else
           ctx.log(
             string.format(
-              "mod %s: a button could not be %s: %s%s",
+              "mod %s: a button could not be %s: %s (it stays as it was: %s)",
               ctx.owner,
               on and "enabled" or "disabled",
               tostring(problem),
-              on and "" or " (it may look enabled, but its clicks are ignored)"
+              on and "it looks grey and its clicks are ignored" or "it looks enabled and its clicks work"
             )
           )
         end
