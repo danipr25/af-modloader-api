@@ -124,7 +124,7 @@ return {
     end,
 
     testMenuOptionIsValidatedAndTabsAreFilteredByMenu = function()
-      local reg = newRegistry()
+      local reg, logs = newRegistry()
       local api = reg:use(fakeAF("recipes"))
       local catalogSpec = tabSpec("vmenu", "Recipes")
       catalogSpec.menu = "catalog"
@@ -151,7 +151,11 @@ return {
       -- Titles are unique across both menus.
       local clash = tabSpec("clash", "Recipes")
       clash.menu = "catalog"
-      reg:use(fakeAF("other")).tabs.add(clash)
+      local before = #reg:tabs()
+      reg:use(fakeAF("other")).tabs.add(clash) -- refused and logged, the mod keeps an inert tab
+      lu.assertEquals(#reg:tabs(), before)
+      lu.assertEquals(#logs, 1)
+      lu.assertStrContains(logs[1], "already uses that title")
     end,
 
     testSelectIsForwardedAndInertTabsReturnFalse = function()

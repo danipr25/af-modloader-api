@@ -35,7 +35,11 @@ No paging: the V bar is wider than the TAB bar. With five tabs it fits. More tab
 
 ### The panel class may not be loaded at start
 
-`WBP_CatalogPanel_C` was not loaded when the API starts. The API registers the V menu hooks (`BP_OnActivated`, `BP_OnDeactivated`) when the class appears: the `PreConstruct` hook of the tab bar group (already used for the TAB menu) fires for the V menu's group too, and when the V menu panel is found it only schedules the registration with `ExecuteInGameThread`. Nothing touches a tab bar from inside `PreConstruct`, because that crashed the game in the TAB menu (see [tab-menu.md](tab-menu.md)). In that deferred call the API checks whether the menu is already open (`IsActivated`, **unverified**) and adds the tabs at once if so. If that timing fails, the tabs appear the next time the menu opens. After the registration, `BP_OnActivated` does the work on every open. This sequence is **unverified**.
+`WBP_CatalogPanel_C` was not loaded when the API starts. The API registers the V menu hooks (`BP_OnActivated`, `BP_OnDeactivated`) when the class appears: the `PreConstruct` hook of the tab bar group (already used for the TAB menu) fires for the V menu's group too, and when the V menu panel is found it only schedules the registration with `ExecuteInGameThread`. Nothing touches a tab bar from inside `PreConstruct`, because that crashed the game in the TAB menu (see [tab-menu.md](tab-menu.md)). After a short delay (100 ms, out of the hooked `PreConstruct`) the API checks whether the menu is already open (`IsActivated`, **unverified**) and adds the tabs if so. If that timing fails, the tabs appear the next time the menu opens. After the registration, `BP_OnActivated` does the work on every open. This sequence is **unverified**.
+
+### Safety net on tab clicks
+
+The API hooks the panel's bound `OnTagSwitch` event (the name above, **verified** to fire on every tab click) with a post hook, registered together with the other V menu hooks. When the clicked tab is one of ours and `SW_Main` does not show our page, it logs that once and calls `SW_Main:SetActiveWidget(page)`, as the probe did. The game's own `tab - 1` rule should make this unnecessary, so it only exists as a safety net. `GetActiveWidget` and this hook through the API are **unverified**.
 
 ## Selecting a tab
 

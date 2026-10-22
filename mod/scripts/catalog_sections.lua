@@ -47,22 +47,25 @@ function Sections:ensureHook()
   if self.hook ~= "none" or #self.registry:sections() == 0 then
     return
   end
-  self.hook = "requested"
-  hooks.install({
-    {
-      path = UPDATE_HOOK,
-      effect = "Sections added by mods will not appear on the item sheet of the V menu.",
-      onGiveUp = function()
-        self.hook = "none" -- tried again the next time the V menu opens
-      end,
-      fn = function(context)
-        local ok, problem = pcall(self.update, self, paramValue(context))
-        if not ok then
-          self.log("could not update the item sheet sections: " .. tostring(problem))
-        end
-      end,
-    },
-  }, self.log)
+  self.hook = "requested" -- before the deferral, so it is never registered twice
+  -- Deferred to the game thread, out of the hook (usually BP_OnActivated) that called this.
+  ExecuteInGameThread(function()
+    hooks.install({
+      {
+        path = UPDATE_HOOK,
+        effect = "Sections added by mods will not appear on the item sheet of the V menu.",
+        onGiveUp = function()
+          self.hook = "none" -- tried again the next time the V menu opens
+        end,
+        fn = function(context)
+          local ok, problem = pcall(self.update, self, paramValue(context))
+          if not ok then
+            self.log("could not update the item sheet sections: " .. tostring(problem))
+          end
+        end,
+      },
+    }, self.log)
+  end)
 end
 
 -- A click on a game button: calls the callback of the section button at that address, if there is one.
@@ -90,12 +93,27 @@ local function itemOf(sheet)
   end
 end
 
+-- Forgets a sheet's record and the clicks of its sections.
+function Sections:dropRecord(address)
+  local rec = self.sheets[address]
+  self.sheets[address] = nil
+  for _, box in pairs(rec and rec.boxes or {}) do
+    if box.session then
+      box.session.alive = false
+      self.clicks:dropSession(box.session)
+    end
+  end
+end
+
 -- The sheet's record, made on the first update. Returns nil and the reason when the sheet does not look as expected.
 function Sections:recordFor(sheet)
   local address = addressOf(sheet)
   local rec = self.sheets[address]
-  if rec and rec.sheet and isValid(rec.sheet) then
+  if rec and isValid(rec.sheet) and isValid(rec.tree) and isValid(rec.parent) then
     return rec
+  end
+  if rec then
+    self:dropRecord(address) -- made again below
   end
   local ok, parent = pcall(function()
     return sheet.Vtb_UsedIn:GetParent()
@@ -205,7 +223,7 @@ function Sections:update(sheet)
   local ok, problem = pcall(function()
     for address, rec in pairs(self.sheets) do
       if not isValid(rec.sheet) then
-        self.sheets[address] = nil
+        self:dropRecord(address)
       end
     end
     local rec, reason = self:recordFor(sheet)

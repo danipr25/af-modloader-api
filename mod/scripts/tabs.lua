@@ -18,6 +18,7 @@ local GROUP_CLASS = "/Game/Blueprints/WBP/Utility/WBP_TagSwitcherGroup.WBP_TagSw
 local TILE_CLICK_HOOK = ui.CLASS.recipeTile .. ":OnMouseButtonDown"
 local BUTTON_CLICK_HOOK = "/Script/CommonUI.CommonButtonBase:HandleButtonClicked"
 local POLL_MS = 150
+local OPEN_CHECK_MS = 100
 local FAILED_PAGE_TEXT = "This page failed to load, see UE4SS.log"
 
 -- The menu descriptors. Fields:
@@ -34,6 +35,7 @@ local FAILED_PAGE_TEXT = "This page failed to load, see UE4SS.log"
 --   preConstructHook     hook the tab bar group's PreConstruct (TAB only; see Tabs:install)
 --   lazy                 the panel class may not be loaded at start: its hooks are registered when it is
 --   canSelect            tab:select() works in this menu
+--   tagSwitchEvent       optional: the panel's bound OnTagSwitch event; a post hook on it checks that our page shows
 local TAB_MENU = {
   id = "tab",
   label = "TAB menu",
@@ -67,6 +69,8 @@ local CATALOG_MENU = {
     return panel.CurrentActivePage
   end,
   pagePadding = { Left = 24.0, Top = 20.0, Right = 24.0, Bottom = 16.0 },
+  tagSwitchEvent = "BndEvt__WBP_CatalogPanel_WBP_TagSwitcherGroup_K2Node_ComponentBoundEvent_0_"
+    .. "OnTagSwitch__DelegateSignature",
   paging = false,
   preConstructHook = false,
   lazy = true,
@@ -527,6 +531,45 @@ function Tabs:onActivated(panel)
   end
 end
 
+-- Safety net, after the game handled a tab click (post hook on the bound OnTagSwitch event): when the tab is one of
+-- ours and the switcher does not show our page, say so once and show it, as the probe did. The game's own rule
+-- (tab - 1) should make this unnecessary. Unverified: GetActiveWidget.
+function Tabs:onTagSwitch(panel, index)
+  local state = self.state
+  if not (state and isValid(panel) and state.address == addressOf(panel) and type(index) == "number") then
+    return
+  end
+  local s = structure(panel, self.menu)
+  if not s then
+    return
+  end
+  local titles = readTitles(s.group)
+  local title = titles[index + 1]
+  if title == nil then
+    return
+  end
+  for _, record in pairs(state.pages) do
+    if record.entry.title == title and isValid(record.root) then
+      local active = s.switcher:GetActiveWidget()
+      if isValid(active) and addressOf(active) == addressOf(record.root) then
+        return
+      end
+      if not self.loggedTagSwitch then
+        self.loggedTagSwitch = true
+        self.log(
+          string.format(
+            'the %s did not show the page of the tab "%s" by itself: showing it (logged once)',
+            self.menu.label,
+            title
+          )
+        )
+      end
+      s.switcher:SetActiveWidget(record.root)
+      return
+    end
+  end
+end
+
 function Tabs:onDeactivated()
   self:stopPollingNow()
   if self.state then
@@ -776,6 +819,18 @@ function Tabs:panelEntries()
       end,
     },
   }
+  if menu.tagSwitchEvent then
+    entries[#entries + 1] = {
+      path = menu.panelClass .. ":" .. menu.tagSwitchEvent,
+      effect = "The V menu relies on the game alone to show the pages of mod tabs.",
+      fn = function(context, index)
+        local ok, problem = pcall(self.onTagSwitch, self, paramValue(context), paramValue(index))
+        if not ok then
+          self.log("could not check the page of the selected " .. menu.label .. " tab: " .. tostring(problem))
+        end
+      end,
+    }
+  end
   if menu.preConstructHook then
     entries[#entries + 1] = {
       path = GROUP_CLASS .. ":PreConstruct",
@@ -826,18 +881,25 @@ function Tabs:panelMayBeLoaded()
   ExecuteInGameThread(function()
     hooks.install(self:panelEntries(), self.log)
     self.panelHooks = "registered"
-    local okLive, live = pcall(FindFirstOf, self.menu.panelName)
-    if not okLive or not isValid(live) then
-      return
-    end
-    local okOpen, open = pcall(function()
-      return live:IsActivated()
-    end)
-    if okOpen and open == true then
-      self:onActivated(live)
-    elseif self.onPanelReady then
+    if self.onPanelReady then
       pcall(self.onPanelReady)
     end
+    -- The check of a menu that is already open comes later, out of the hooked PreConstruct that is still on the
+    -- stack here: rebuilding the tab bar inside its own PreConstruct crashed the game (docs/tab-menu.md).
+    ExecuteWithDelay(OPEN_CHECK_MS, function()
+      ExecuteInGameThread(function()
+        local okLive, live = pcall(FindFirstOf, self.menu.panelName)
+        if not okLive or not isValid(live) then
+          return
+        end
+        local okOpen, open = pcall(function()
+          return live:IsActivated()
+        end)
+        if okOpen and open == true then
+          self:onActivated(live)
+        end
+      end)
+    end)
   end)
 end
 
