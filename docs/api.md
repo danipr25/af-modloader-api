@@ -1,6 +1,6 @@
 # API reference
 
-AF Mod Loader API 0.1.3 for mod authors. Game 1.1.5023, UE4SS 1181, AF Mod Loader 0.1.0.
+AF Mod Loader API 0.1.4 for mod authors. Game 1.1.5024, UE4SS 1181, AF Mod Loader 0.1.0.
 
 Each function says what is **verified in game** and what is **not verified yet**. Nothing marked "not verified" has run in the game: it is written from the UE4SS and Unreal Engine documentation, wrapped so that a failure is logged instead of crashing, and waits for the in-game test. Verified findings are recorded in [tab-menu.md](tab-menu.md) and [console.md](console.md).
 
@@ -8,13 +8,13 @@ Each function says what is **verified in game** and what is **not verified yet**
 
 ### Versions
 
-The API is 0.x until 1.0. A patch version (0.1.3) fixes things or adds functions and never breaks a mod. A minor version (0.2.0) may break mods, and the changelog says how. So a mod depends on one minor line of the API, and of the loader, which follows the same rule:
+The API is 0.x until 1.0. A patch version (0.1.4) fixes things or adds functions and never breaks a mod. A minor version (0.2.0) may break mods, and the changelog says how. So a mod depends on one minor line of the API, and of the loader, which follows the same rule:
 
 ```json
 "depends": { "af-modloader": ">=0.1.0 <0.2.0", "af-modloader-api": ">=0.1.0 <0.2.0" }
 ```
 
-`api.version` is the installed version as text, like `"0.1.3"`.
+`api.version` is the installed version as text, like `"0.1.4"`.
 
 Raise the lower bound to the first version that has every call your mod uses. `page:row()`, `row:button`, `page:grid()` and clicks on tiles came with 0.1.1, so a mod that uses them depends on `"af-modloader-api": ">=0.1.1 <0.2.0"`. A mod that does not use them keeps working with `>=0.1.0`. `api.world` came with 0.1.2, so a mod that uses it depends on `"af-modloader-api": ">=0.1.2 <0.2.0"`. `text:color`, `page:text(str, { wrap = true })` and `button:enable` came with 0.1.3, so a mod that uses them depends on `"af-modloader-api": ">=0.1.3 <0.2.0"`.
 
@@ -74,7 +74,7 @@ Tabs appear after the game's own, in the order mods registered them (which follo
 
 Status: **verified in game** for one tab (2026-10-21, game 1.1.5023): the tab is added on the first open, the highlighted tab is right, reopening adds nothing, `refresh()` from a console command rebuilds the page, and after loading another save the new menu gets the tab once. The group's `PreConstruct` hook fires before `BP_OnActivated`, and the tab is added from it. Two tabs from two mods are **verified** too: each opens its own page and the game's pages stay right. After a UE4SS mods restart (Ctrl+R with `EnableHotReloadSystem = 1`) the old tabs stay but do nothing, the log says to load the save again, and after loading it the tabs work again, once each; no crash. Removal on restart stays disabled and **not verified**.
 
-Known limit: the game's tab bar has a fixed width. Four tabs fit; with five (two mods with a tab each) the last button is pushed out of line. Not handled yet.
+Paging: the game's tab bar has a fixed width. When the tabs do not all fit, the API shows as many whole tabs as fit with an arrow at each end, and a click on an arrow moves by one view (any mouse button works; no wrap-around; an arrow that cannot move is grey and does nothing). Every tab is at least 128 wide and wider with a long title, so short titles fit more tabs: about 3 to 4 fit next to the game's own three. Nothing changes when they all fit. Only the TAB menu is affected. Status: **not verified in game** as an API feature (0.1.4); the pieces were verified in a probe (2026-10-22, game 1.1.5024), see [tab-menu.md](tab-menu.md).
 
 ### `tab:refresh()`
 
@@ -308,11 +308,13 @@ Status: **verified in game** with a throwaway mod (the console opens with both k
 |---|---|---|
 | `WBP_PlayerGearPanel_C:BP_OnActivated` and `BP_OnDeactivated` | Add tabs when the TAB menu opens; start and stop the input polling | hookable, verified in game |
 | `WBP_TagSwitcherGroup_C:PreConstruct` | Notice the tab bar being rebuilt by the game | hookable, verified in game |
+| `WBP_TagSwitcher_C:OnMouseButtonDown` (path in [tab-menu.md](tab-menu.md)) | Clicks on the tab bar's arrows (fires for every tab button in the game, for any mouse button; the API ignores the ones it did not create) | hookable and fires once per click, verified in a probe (2026-10-22, game 1.1.5024); registered when the arrows are first made |
+| `SetVisibility`, `ForceLayoutPrepass`, `GetDesiredSize`, slot `SetPadding` on the tab bar and its tabs; `Overlay:AddChildToOverlay`; `Image:SetBrushFromTexture` | Paging the tab bar | verified in a probe (2026-10-22, game 1.1.5024); the API's own use not verified |
 | `TagSwithcer.TitleList`, `EntryPanel:ClearChildren()`, `EntryList:Empty()`, `PreConstruct(false)`, `WidgetSwitcher_0:AddChild()` | The tab mechanism | verified in game |
 | `/Script/CommonUI.CommonButtonBase:HandleButtonClicked` | Clicks on buttons made by `row:button` (fires for every CommonUI button in the game; the API ignores the ones it did not create) | hookable and fires on a click, verified in a spike (2026-10-21) |
 | `WBP_RecipeItemTile_C:OnMouseButtonDown` (path in [widgets.md](widgets.md)) | Clicks on tiles made by `grid:tile` (fires on press, for any mouse button, for every such tile in the game) | hookable and fires on a click, verified in a spike (2026-10-21); registered when the first tile is made |
 | `WidgetBlueprintLibrary:Create`, `WBP_ButtonBase_C:SetButtonText`, `WBP_RecipeItemTile_C:UpdateItemInfo`, `WrapBox:AddChildToWrapBox` | Buttons, tiles and the grid | verified in a spike (2026-10-21) |
-| `LoadAsset` | Loads a game class (the tile) if it is not loaded yet | not verified; not needed in game 1.1.5023 (the class was already loaded) |
+| `LoadAsset` | Loads a game class (the tile) or the arrow texture `T_UI_RightArrow` if it is not loaded yet | works for the texture (probe, 2026-10-22); not needed in game so far (already loaded) |
 | `WrapBox:ClearChildren` | `grid:clear()` | verified in game (API 0.1.1) |
 | `WBP_ButtonBase_C:SetIsEnabled` | `button:enable(on)` | verified in a probe (2026-10-21): grey, clicks ignored |
 | `TextBlock:SetColorAndOpacity` | `text:color(r, g, b, a)` | verified on page and row texts (2026-10-21); list texts not verified |
