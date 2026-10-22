@@ -73,7 +73,7 @@ end
 
 -- Where the bar lives and how much room it has, read once per panel before anything is changed: the bar's parent must
 -- be an Overlay whose child 1 is the page box (a SizeBox), found by position because the box is not a variable.
-local function readGeometry(group)
+local function readGeometry(group, knownPadding)
   local overlay = group:GetParent()
   if not isValid(overlay) or className(overlay) ~= "Overlay" then
     error("the tab bar is not inside an Overlay", 0)
@@ -82,9 +82,12 @@ local function readGeometry(group)
   if not isValid(box) or className(box) ~= "SizeBox" then
     error("the page box next to the tab bar was not found", 0)
   end
-  local width = box.bOverride_WidthOverride and box.WidthOverride or box:GetDesiredSize().X
+  -- bOverride_WidthOverride is a bitfield: set when true or 1.
+  local flag = box.bOverride_WidthOverride
+  local width = (flag == true or flag == 1) and box.WidthOverride or box:GetDesiredSize().X
   local padding = group.Slot.Padding
-  local original = { Left = padding.Left, Top = padding.Top, Right = padding.Right, Bottom = padding.Bottom }
+  local original = knownPadding
+    or { Left = padding.Left, Top = padding.Top, Right = padding.Right, Bottom = padding.Bottom }
   if type(width) ~= "number" or width <= 0 or type(original.Left) ~= "number" then
     error("the width of the page box could not be read", 0)
   end
@@ -241,6 +244,48 @@ local function setVisibility(widgets, visibility)
   end
 end
 
+-- The first time this Lua state sees a panel, undoes what an earlier Lua state may have left in it (the widgets survive
+-- a UE4SS mods restart, the Lua state does not): old arrows are removed, the padding they needed is taken off (the
+-- result is the bar's original padding) and every tab is shown. Runs before anything else reads the padding.
+function Bar:cleanLeftovers(rec, group)
+  local ok, problem = pcall(function()
+    local overlay = group:GetParent()
+    if not isValid(overlay) or className(overlay) ~= "Overlay" then
+      return
+    end
+    local found = 0
+    for index = overlay:GetChildrenCount() - 1, 2, -1 do
+      local child = overlay:GetChildAt(index)
+      if isValid(child) and className(child) == "Overlay" then
+        local inner = child:GetChildAt(0)
+        if isValid(inner) and className(inner) == "WBP_TagSwitcher_C" then
+          child:RemoveFromParent()
+          found = found + 1
+        end
+      end
+    end
+    if found > 0 then
+      local padding = group.Slot.Padding
+      rec.knownPadding = {
+        Left = padding.Left - (ARROW_WIDTH + GAP),
+        Top = padding.Top,
+        Right = padding.Right - (ARROW_WIDTH + GAP),
+        Bottom = padding.Bottom,
+      }
+      group.Slot:SetPadding(rec.knownPadding)
+      self:note(
+        rec,
+        "leftover",
+        string.format("removed %d tab bar arrow(s) left over from before a mods restart and showed every tab", found)
+      )
+    end
+    setVisibility(entriesOf(group), VISIBLE)
+  end)
+  if not ok then
+    self:note(rec, "leftover", "could not clean up the tab bar after a mods restart: " .. tostring(problem))
+  end
+end
+
 -- Puts the bar back the way the game made it: every tab visible, the original padding, the arrows collapsed.
 -- Only when something was changed.
 function Bar:reset(rec, group)
@@ -333,7 +378,7 @@ end
 function Bar:apply(state, rec, group)
   rec.group = group
   if not rec.geometry then
-    rec.geometry = readGeometry(group)
+    rec.geometry = readGeometry(group, rec.knownPadding)
   end
   local entries, titles = entriesOf(group), titlesOf(group)
   if #entries ~= #titles then
@@ -378,6 +423,7 @@ function Bar:update(state, group, healthy)
   if not rec then
     rec = { first = 1, logged = {} }
     state.bar = rec
+    self:cleanLeftovers(rec, group)
   end
   if not healthy then
     self:reset(rec, group)

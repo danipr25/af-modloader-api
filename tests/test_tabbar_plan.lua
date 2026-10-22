@@ -2,7 +2,8 @@
 local lu = require("luaunit")
 local plan = require("tabbar_plan")
 
--- The widths measured in game 1.1.5024 (docs/tab-menu.md) and the room left by the page box (580 - 16 - 2 * 68).
+-- The widths measured in game 1.1.5024 (docs/tab-menu.md) and the room: 580 - 16 = 564 for the bar, and
+-- 564 - 2 * (64 + 4) = 428 for the tabs when paged.
 local MEASURED = { 128, 128, 154, 199, 128 }
 local AVAILABLE = 564
 
