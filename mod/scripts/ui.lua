@@ -334,6 +334,32 @@ function ui.newPage(ctx)
     return address
   end
 
+  -- Creates the game's clickable recipe tile (the one the grid uses) for an item. The count is not shown in the
+  -- TAB menu, so there is none. Returns the tile and its class.
+  local function createRecipeTile(name)
+    local library = StaticFindObject(CLASS.library)
+    local class = ui.findClass(CLASS.recipeTile, ctx.log)
+    if not isValid(library) or not class then
+      error("the item tile class of the game was not found")
+    end
+    local tile = library:Create(ctx.panel, class, ui.playerController())
+    if not isValid(tile) then
+      error("the game did not create an item tile")
+    end
+    tile:UpdateItemInfo(FName(name), 1, 0.0, 0.0, true, false, false)
+    return tile, class
+  end
+
+  -- The click hook of the tile class can only be registered once the class is loaded: now it is.
+  local function notifyTileCreated(class)
+    if ctx.onTileCreated then
+      local okHook, hookProblem = pcall(ctx.onTileCreated, class)
+      if not okHook then
+        ctx.log("could not prepare the tile click hook: " .. tostring(hookProblem))
+      end
+    end
+  end
+
   -- Creates one of the game's buttons with its label (an empty label for the arrows).
   local function createButton(label)
     local library = StaticFindObject(CLASS.library)
@@ -516,10 +542,37 @@ function ui.newPage(ctx)
         centerSlot(hbox:AddChildToHorizontalBox(widget))
       end, extraCheck, nil, small)
     end
-    function row.item(_, name, count)
-      if rowLive() then
-        makeItem(hbox, name, count, extraCheck)
+    -- opts (optional, page rows only): { onClick = function(name) } makes the tile clickable. It is then the recipe
+    -- tile of the grid, which shows no count: count must be nil or 1.
+    function row.item(_, name, count, opts)
+      if not rowLive() then
+        return
       end
+      if opts ~= nil then
+        if not withButtons then
+          error("row:item: only rows of a page take options (a list row has no clickable tiles)", 2)
+        end
+        if type(opts) ~= "table" or (opts.onClick ~= nil and type(opts.onClick) ~= "function") then
+          error("row:item takes an optional table { onClick = function(name) end }", 2)
+        end
+      end
+      local onClick = opts and opts.onClick
+      if onClick == nil then
+        makeItem(hbox, name, count, extraCheck)
+        return
+      end
+      if type(name) ~= "string" or name == "" then
+        error('row:item needs the item name as text, like "GentianNectar"', 2)
+      end
+      if count ~= nil and count ~= 1 then
+        error("row:item: a clickable tile shows no count, so the count must be nil or 1", 2)
+      end
+      local tile, class = createRecipeTile(name)
+      centerSlot(hbox:AddChildToHorizontalBox(tile))
+      registerClick(tile, extraCheck, function()
+        onClick(name)
+      end)
+      notifyTileCreated(class)
     end
     if withButtons then
       -- opts (optional): { small = true } shows a smaller button (a ScaleBox at 0.6).
@@ -758,16 +811,7 @@ function ui.newPage(ctx)
       if spec ~= nil and (type(spec) ~= "table" or (spec.onClick ~= nil and type(spec.onClick) ~= "function")) then
         error("grid:tile takes an optional table { onClick = function(name) end }", 2)
       end
-      local library = StaticFindObject(CLASS.library)
-      local class = ui.findClass(CLASS.recipeTile, ctx.log)
-      if not isValid(library) or not class then
-        error("the item tile class of the game was not found")
-      end
-      local tile = library:Create(ctx.panel, class, ui.playerController())
-      if not isValid(tile) then
-        error("the game did not create an item tile")
-      end
-      tile:UpdateItemInfo(FName(name), 1, 0.0, 0.0, true, false, false)
+      local tile, class = createRecipeTile(name)
       wrap:AddChildToWrapBox(tile)
       local onClick = spec and spec.onClick
       if onClick then
@@ -781,13 +825,7 @@ function ui.newPage(ctx)
           addresses[#addresses + 1] = address
         end
       end
-      -- The click hook of the tile class can only be registered once the class is loaded: now it is.
-      if ctx.onTileCreated then
-        local okHook, hookProblem = pcall(ctx.onTileCreated, class)
-        if not okHook then
-          ctx.log("could not prepare the tile click hook: " .. tostring(hookProblem))
-        end
-      end
+      notifyTileCreated(class)
     end
 
     return grid
