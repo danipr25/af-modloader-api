@@ -1,6 +1,6 @@
 # API reference
 
-AF Mod Loader API 0.1.5 for mod authors. Game 1.1.5024, UE4SS 1181, AF Mod Loader 0.1.0.
+AF Mod Loader API 0.1.6 for mod authors. Game 1.1.5024, UE4SS 1181, AF Mod Loader 0.1.0.
 
 Each function says what is **verified in game** and what is **not verified yet**. Nothing marked "not verified" has run in the game: it is written from the UE4SS and Unreal Engine documentation, wrapped so that a failure is logged instead of crashing, and waits for the in-game test. Verified findings are recorded in [tab-menu.md](tab-menu.md) and [console.md](console.md).
 
@@ -8,15 +8,15 @@ Each function says what is **verified in game** and what is **not verified yet**
 
 ### Versions
 
-The API is 0.x until 1.0. A patch version (0.1.5) fixes things or adds functions and never breaks a mod. A minor version (0.2.0) may break mods, and the changelog says how. So a mod depends on one minor line of the API, and of the loader, which follows the same rule:
+The API is 0.x until 1.0. A patch version (0.1.6) fixes things or adds functions and never breaks a mod. A minor version (0.2.0) may break mods, and the changelog says how. So a mod depends on one minor line of the API, and of the loader, which follows the same rule:
 
 ```json
 "depends": { "af-modloader": ">=0.1.0 <0.2.0", "af-modloader-api": ">=0.1.0 <0.2.0" }
 ```
 
-`api.version` is the installed version as text, like `"0.1.5"`.
+`api.version` is the installed version as text, like `"0.1.6"`.
 
-Raise the lower bound to the first version that has every call your mod uses. `page:row()`, `row:button`, `page:grid()` and clicks on tiles came with 0.1.1, so a mod that uses them depends on `"af-modloader-api": ">=0.1.1 <0.2.0"`. A mod that does not use them keeps working with `>=0.1.0`. `api.world` came with 0.1.2, so a mod that uses it depends on `"af-modloader-api": ">=0.1.2 <0.2.0"`. `text:color`, `page:text(str, { wrap = true })` and `button:enable` came with 0.1.3, so a mod that uses them depends on `"af-modloader-api": ">=0.1.3 <0.2.0"`. `page:text(str, { size = "small" })`, `row:text(str, { size = "small" })`, `row:button(label, onClick, { small = true })` and `row:arrow` came with 0.1.5, so a mod that uses them depends on `"af-modloader-api": ">=0.1.5 <0.2.0"`. 0.1.5 also centers the contents of rows vertically, for every mod.
+Raise the lower bound to the first version that has every call your mod uses. `page:row()`, `row:button`, `page:grid()` and clicks on tiles came with 0.1.1, so a mod that uses them depends on `"af-modloader-api": ">=0.1.1 <0.2.0"`. A mod that does not use them keeps working with `>=0.1.0`. `api.world` came with 0.1.2, so a mod that uses it depends on `"af-modloader-api": ">=0.1.2 <0.2.0"`. `text:color`, `page:text(str, { wrap = true })` and `button:enable` came with 0.1.3, so a mod that uses them depends on `"af-modloader-api": ">=0.1.3 <0.2.0"`. `page:text(str, { size = "small" })`, `row:text(str, { size = "small" })`, `row:button(label, onClick, { small = true })` and `row:arrow` came with 0.1.5, so a mod that uses them depends on `"af-modloader-api": ">=0.1.5 <0.2.0"`. 0.1.5 also centers the contents of rows vertically, for every mod. `row:item(name, 1, { onClick = fn })`, a clickable item tile in a page row, came with 0.1.6, so a mod that uses it depends on `"af-modloader-api": ">=0.1.6 <0.2.0"`.
 
 ### Threads
 
@@ -137,7 +137,7 @@ Status: the box, typing in it, `onChange` and the polling (with `LoopInGameThrea
 Adds a horizontal row on the page itself: things placed side by side.
 
 - `row:text(str)` adds text and returns a text handle (`:set`).
-- `row:item(itemName, count)` adds the game's item tile, like in a list row.
+- `row:item(itemName, count, opts)` adds the game's item tile, like in a list row. `opts` is optional and only for rows of a page (API 0.1.6): `{ onClick = function(itemName) end }` makes the tile clickable. A clickable tile is the game's `WBP_RecipeItemTile_C`, the one `grid:tile` makes, so it shows no count: `count` must be nil or 1, otherwise it is an error. A click with any mouse button calls `onClick(itemName)`, like on a grid tile. `opts` must be nil or a table whose `onClick` is a function, otherwise it is an error. A list row (`list:row()`) has no clickable tiles and rejects `opts` with an error (before 0.1.6 a third argument was ignored there). Unknown keys in `opts` are ignored. Two quick clicks on two different clickable tiles can both arrive before your code rebuilds the row, and removing the first one shifts the second: do not assume the position of the second tile is unchanged.
 - `row:button(label, onClick, opts)` adds the game's button with `label` as its text and returns a button handle. `onClick()` is called when the player clicks it. `button:set(label)` changes the label. `button:enable(on)` enables (`true`) or disables (`false`) it: a disabled button is grey and ignores clicks. `on` must be a boolean, otherwise it is an error, also on a handle whose page was rebuilt; only a handle made on a page that was already gone does nothing and checks nothing. Buttons start enabled; call `enable(false)` right after adding the button to its row, and keep the handle to enable it again later. `opts` is optional: `{ small = true }` draws a smaller button (the game's button inside a `ScaleBox` at 0.6, same handle and clicks). `opts` must be nil or a table whose `small` is a boolean, otherwise it is an error.
 - `row:arrow(direction, onClick)` adds a small arrow button, `direction` being `"previous"` (points left) or `"next"` (points right), anything else is an error. It is the game's button inside a `ScaleBox` at 0.6 with the game's gold arrow picture on top. The handle has only `enable(on)`: like `button:enable`, but the arrow is also grey when disabled and gold when enabled. If the picture cannot be found, the arrow is a small button labelled `<` or `>` and one line is logged.
 
@@ -159,7 +159,7 @@ back:enable(false)
 
 Buttons live in rows made with `page:row()`. List rows (`list:row()`) have no buttons. About three buttons fit in a row: a fourth runs past the panel.
 
-Status: `HorizontalBox` and the button (`WBP_ButtonBase_C` created with `Create`, label with `SetButtonText`) are **verified in game** in a spike (2026-10-21, see [widgets.md](widgets.md)). The API's own `row:button`, with a click that calls `tab:refresh()`, is **verified in game** too (2026-10-21, API 0.1.1): one effect per click, also after many fast clicks. `enable` (`SetIsEnabled`) is **verified in game** in a probe (2026-10-21): the button turns grey and clicks do nothing. Also verified with API 0.1.3 and the template (2026-10-21): a button disabled at build time is grey and ignores clicks, stays grey after closing and reopening the TAB menu, and works again after another button calls `enable(true)`. The click router also skips a button its handle marked disabled, as a second guard. **Not verified through the API** (API 0.1.5): the centering of row children (`SetVerticalAlignment` on the `HorizontalBoxSlot` is verified in a probe, 2026-10-22), `{ small = true }` and `row:arrow`. The probe verified a `ScaleBox` at 0.6 around the game's button (looks smaller, clicks arrive as usual) and the arrow overlay (button, gold arrow picture, clicks arrive); the arrow picture's size (64 before scaling) is a guess, the in-game test checks it. Row text, button and arrow slots that the game refuses to center are logged once.
+Status: `HorizontalBox` and the button (`WBP_ButtonBase_C` created with `Create`, label with `SetButtonText`) are **verified in game** in a spike (2026-10-21, see [widgets.md](widgets.md)). The API's own `row:button`, with a click that calls `tab:refresh()`, is **verified in game** too (2026-10-21, API 0.1.1): one effect per click, also after many fast clicks. `enable` (`SetIsEnabled`) is **verified in game** in a probe (2026-10-21): the button turns grey and clicks do nothing. Also verified with API 0.1.3 and the template (2026-10-21): a button disabled at build time is grey and ignores clicks, stays grey after closing and reopening the TAB menu, and works again after another button calls `enable(true)`. The click router also skips a button its handle marked disabled, as a second guard. **Not verified through the API** (API 0.1.6): a clickable `row:item` (a `WBP_RecipeItemTile_C` inside the `HorizontalBox`: its size, frame and centering are unverified and may look different from the tiles of a list row; the click on it uses the same hook as the grid tiles, which is verified; a right click is expected to work too, not verified) and, from API 0.1.5, the centering of row children (`SetVerticalAlignment` on the `HorizontalBoxSlot` is verified in a probe, 2026-10-22), `{ small = true }` and `row:arrow`. The probe verified a `ScaleBox` at 0.6 around the game's button (looks smaller, clicks arrive as usual) and the arrow overlay (button, gold arrow picture, clicks arrive); the arrow picture's size (64 before scaling) is a guess, the in-game test checks it. Row text, button and arrow slots that the game refuses to center are logged once.
 
 ### `page:grid()` returns `grid`
 
@@ -185,10 +185,10 @@ A click calls your function on the game thread, inside `pcall`, like `build` (an
 
 Things to know:
 
-- Tiles are expected to react when the mouse button goes **down**, and to any mouse button, so a right click should select too (expected from the hook, not verified).
+- Tiles (`grid:tile`, and `row:item` with `onClick`) are expected to react when the mouse button goes **down**, and to any mouse button, so a right click should select too (expected from the hook, not verified).
 - Clicks are only reported while the TAB menu is open. A click on a game tile or button the API did not create is ignored, with no log line.
 - After a page is rebuilt, or the menu is created again (for example after loading a save), the old widgets are gone and their clicks are no longer reported. Use the new handles.
-- The API registers one shared game hook for buttons and one for tiles, so several mods can use clicks without overwriting each other. The tile hook is registered when the first tile is made if the game has not loaded the tile class before.
+- The API registers one shared game hook for buttons and one for tiles, so several mods can use clicks without overwriting each other. The tile hook (also used by `row:item` with `onClick`) is registered when the first tile is made if the game has not loaded the tile class before.
 
 Status: **verified in game** (2026-10-21, API 0.1.1): clicks on two different tiles and on a button reach the right callback once; clicking the game's own tiles and buttons (inventory, build menu, other TAB pages) has no effect on mods; clicks keep working after loading another save and after a UE4SS mods restart (Ctrl+R) followed by loading the save, with one effect per click.
 
@@ -325,7 +325,7 @@ Status: **verified in game** with a throwaway mod (the console opens with both k
 | `SetVisibility`, `ForceLayoutPrepass`, `GetDesiredSize`, slot `SetPadding` on the tab bar and its tabs; `Overlay:AddChildToOverlay`; `Image:SetBrushFromTexture` | Paging the tab bar | verified in game (2026-10-22, game 1.1.5024, API 0.1.4); hiding the arrows when the tabs fit again is not verified (`SetVisibility` on the arrows themselves) |
 | `TagSwithcer.TitleList`, `EntryPanel:ClearChildren()`, `EntryList:Empty()`, `PreConstruct(false)`, `WidgetSwitcher_0:AddChild()` | The tab mechanism | verified in game |
 | `/Script/CommonUI.CommonButtonBase:HandleButtonClicked` | Clicks on buttons made by `row:button` (fires for every CommonUI button in the game; the API ignores the ones it did not create) | hookable and fires on a click, verified in a spike (2026-10-21) |
-| `WBP_RecipeItemTile_C:OnMouseButtonDown` (path in [widgets.md](widgets.md)) | Clicks on tiles made by `grid:tile` (fires on press, for any mouse button, for every such tile in the game) | hookable and fires on a click, verified in a spike (2026-10-21); registered when the first tile is made |
+| `WBP_RecipeItemTile_C:OnMouseButtonDown` (path in [widgets.md](widgets.md)) | Clicks on tiles made by `grid:tile` and by `row:item` with `onClick` (fires on press, for any mouse button, for every such tile in the game) | hookable and fires on a click, verified in a spike (2026-10-21); registered when the first tile is made |
 | `WidgetBlueprintLibrary:Create`, `WBP_ButtonBase_C:SetButtonText`, `WBP_RecipeItemTile_C:UpdateItemInfo`, `WrapBox:AddChildToWrapBox` | Buttons, tiles and the grid | verified in a spike (2026-10-21) |
 | `LoadAsset` | Loads a game class (the button, the tiles) or the arrow texture `T_UI_RightArrow` if it is not loaded yet | returns the texture when it is already loaded (probe, 2026-10-22); loading an asset that is not loaded yet is not verified (not needed so far) |
 | `WrapBox:ClearChildren` | `grid:clear()` | verified in game (API 0.1.1) |

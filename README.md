@@ -2,7 +2,7 @@
 
 Shared helpers for **Alchemy Factory** mods loaded by AF Mod Loader, so mods that touch the same part of the game coexist instead of overwriting each other. It is a regular mod that other mods depend on, and it includes a template for starting new mods.
 
-Status: version 0.1.5, in development. Each piece's in-game status is in docs/api.md. The API stays at 0.x, and may change, until 1.0.
+Status: version 0.1.6, in development. Each piece's in-game status is in docs/api.md. The API stays at 0.x, and may change, until 1.0.
 
 Unofficial fan project. Alchemy Factory belongs to its developers.
 

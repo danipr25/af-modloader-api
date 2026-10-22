@@ -44,6 +44,14 @@ tab = api.tabs.add({
       tab:refresh() -- a click may rebuild the page: build runs again and shows the new message
     end)
 
+    -- An item tile in a row can be clickable: pass { onClick = function(name) end } (the count must be 1 or left out).
+    row:item("Wood", 1, {
+      onClick = function(clicked)
+        message = "You clicked " .. clicked
+        heading:set(message)
+      end,
+    })
+
     -- A disabled button is grey and ignores clicks. Call enable() after the button is in its row, and keep the
     -- handle to enable it later. Texts in a row can be colored too.
     local lockedRow = page:row()
