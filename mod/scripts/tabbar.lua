@@ -208,26 +208,34 @@ end
 
 -- Puts the page box last in the overlay so it is drawn over the arrows, as it is over the real tabs: the arrows were
 -- added after it and would cover its frame. Its padding and alignments are copied to the new slot. Once per panel,
--- when the arrows are first made. Unverified (RemoveChild, AddChildToOverlay of the box). On a failure the order
--- stays as it is: the arrows still work, they are only drawn over the frame.
+-- when the arrows are first made (RemoveChild, AddChildToOverlay of the box: verified in game 1.1.5024). On a failure
+-- the order stays as it is: the arrows still work, they are only drawn over the frame.
 function Bar:moveBoxLast(rec)
   local geometry = rec.geometry
+  local box = geometry.box
+  local kept, horizontal, vertical
+  local function restoreSlot(slot)
+    slot:SetPadding(kept)
+    slot:SetHorizontalAlignment(horizontal)
+    slot:SetVerticalAlignment(vertical)
+  end
   local ok, problem = pcall(function()
-    local box, slot = geometry.box, geometry.box.Slot
+    local slot = box.Slot
     local padding = slot.Padding
-    local kept = { Left = padding.Left, Top = padding.Top, Right = padding.Right, Bottom = padding.Bottom }
-    local horizontal, vertical = slot.HorizontalAlignment, slot.VerticalAlignment
+    kept = { Left = padding.Left, Top = padding.Top, Right = padding.Right, Bottom = padding.Bottom }
+    horizontal, vertical = slot.HorizontalAlignment, slot.VerticalAlignment
     geometry.overlay:RemoveChild(box)
-    local moved = geometry.overlay:AddChildToOverlay(box)
-    moved:SetPadding(kept)
-    moved:SetHorizontalAlignment(horizontal)
-    moved:SetVerticalAlignment(vertical)
+    restoreSlot(geometry.overlay:AddChildToOverlay(box))
   end)
   if not ok then
-    -- If the box left the overlay but was not added back, put it back at once: the pages must never disappear.
+    -- The pages must never disappear: if the box left the overlay, put it back; if it is back with a new slot, give
+    -- that slot the old padding and alignments.
     pcall(function()
-      if not isValid(geometry.box:GetParent()) then
-        geometry.overlay:AddChildToOverlay(geometry.box)
+      if not isValid(box:GetParent()) then
+        geometry.overlay:AddChildToOverlay(box)
+      end
+      if kept then
+        restoreSlot(box.Slot)
       end
     end)
     self:note(
@@ -295,18 +303,22 @@ function Bar:cleanLeftovers(rec, group)
     if not isValid(overlay) or className(overlay) ~= "Overlay" then
       return
     end
-    local found = 0
+    local found, shown = 0, 0
     for index = overlay:GetChildrenCount() - 1, 1, -1 do
       local child = overlay:GetChildAt(index)
       if isValid(child) and className(child) == "Overlay" then
         local inner = child:GetChildAt(0)
         if isValid(inner) and className(inner) == "WBP_TagSwitcher_C" then
+          -- Collapsed arrows mean the old state had already given the bar its padding back.
+          if child:GetVisibility() ~= COLLAPSED then
+            shown = shown + 1
+          end
           child:RemoveFromParent()
           found = found + 1
         end
       end
     end
-    if found > 0 then
+    if shown > 0 then
       local padding = group.Slot.Padding
       rec.knownPadding = {
         Left = padding.Left - (ARROW_WIDTH + GAP),
@@ -319,6 +331,12 @@ function Bar:cleanLeftovers(rec, group)
         rec,
         "leftover",
         string.format("removed %d tab bar arrow(s) left over from before a mods restart and showed every tab", found)
+      )
+    elseif found > 0 then
+      self:note(
+        rec,
+        "leftover",
+        string.format("removed %d hidden tab bar arrow(s) left over from before a mods restart", found)
       )
     end
     setVisibility(entriesOf(group), VISIBLE)
@@ -400,7 +418,7 @@ local function show(rec, group, entries, window)
     group.Slot:SetPadding({
       Left = padding.Left + ARROW_WIDTH + GAP,
       Top = padding.Top,
-      Right = ARROW_WIDTH + GAP + 0.0,
+      Right = padding.Right + ARROW_WIDTH + GAP,
       Bottom = padding.Bottom,
     })
     for side, arrow in pairs(rec.arrows) do
