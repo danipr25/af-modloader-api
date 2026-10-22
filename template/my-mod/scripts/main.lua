@@ -42,7 +42,8 @@ tab = api.tabs.add({
     row:button("Press me", function()
       presses = presses + 1
       message = "Button pressed " .. presses .. " times"
-      tab:refresh() -- a click may rebuild the page: build runs again and shows the new message
+      -- Change the text in place: tab:refresh() would rebuild the whole page, and the menu flickers when it does.
+      heading:set(message)
     end)
 
     -- An item tile in a row can be clickable: pass { onClick = function(name) end } (the count must be 1 or left out).
