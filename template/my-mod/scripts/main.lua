@@ -66,8 +66,7 @@ tab = api.tabs.add({
       heading:set(message)
     end, { small = true })
     local PAGES, shown = 3, 1
-    local previousArrow, nextArrow
-    local pageLabel = pagerRow:text("", { size = "small" })
+    local previousArrow, pageLabel, nextArrow
     local function showPager()
       pageLabel:set(string.format("Page %d of %d", shown, PAGES))
       previousArrow:enable(shown > 1)
@@ -77,7 +76,7 @@ tab = api.tabs.add({
       shown = shown - 1
       showPager()
     end)
-    pagerRow:text(" ", { size = "small" })
+    pageLabel = pagerRow:text("", { size = "small" })
     nextArrow = pagerRow:arrow("next", function()
       shown = shown + 1
       showPager()

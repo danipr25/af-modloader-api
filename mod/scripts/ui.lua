@@ -51,9 +51,8 @@ function ui.addressOf(object)
 end
 local addressOf = ui.addressOf
 
--- Finds a game class that may not be loaded yet: StaticFindObject, then LoadAsset (verified in the spike, where
--- the class was found after LoadAsset). Logs once per class path which way worked, or that it is not available.
--- Returns the class, or nil.
+-- Finds a game class that may not be loaded at start: StaticFindObject, then LoadAsset. Logs once per class path
+-- which way worked, or that it is not available. Returns the class, or nil.
 local classNotes = {}
 function ui.findClass(path, log)
   local class = StaticFindObject(path)
@@ -77,21 +76,20 @@ function ui.findClass(path, log)
   end
 end
 
--- Finds a game texture that may not be loaded yet: StaticFindObject, then LoadAsset once (both verified for the
--- arrow texture). Logs once per path if it had to be loaded, or that it is not available. Returns the texture, or nil.
-local textureNotes = {}
+-- Finds a game texture that may not be loaded yet: StaticFindObject, then LoadAsset, tried once per path (both
+-- verified for the arrow texture). Logs once per path if it had to be loaded, or that it is not available.
+-- Returns the texture, or nil.
+local textureTried = {}
 function ui.findTexture(path, log)
   local texture = StaticFindObject(path)
-  if not isValid(texture) and type(LoadAsset) == "function" then
+  if not isValid(texture) and not textureTried[path] and type(LoadAsset) == "function" then
+    textureTried[path] = true
     pcall(LoadAsset, path)
     texture = StaticFindObject(path)
-    if textureNotes[path] == nil then
-      textureNotes[path] = true
-      log(
-        isValid(texture) and ("game texture " .. path .. ": loaded with LoadAsset")
-          or ("game texture " .. path .. " is not available: widgets that need it fall back or fail")
-      )
-    end
+    log(
+      isValid(texture) and ("game texture " .. path .. ": loaded with LoadAsset")
+        or ("game texture " .. path .. " is not available: widgets that need it fall back or fail")
+    )
   end
   if isValid(texture) then
     return texture
@@ -137,6 +135,7 @@ end
 local inertArrow = ui.inertArrow
 
 -- A ScaleBox that draws its child at a fixed scale but keeps the child's real layout size (verified in game).
+local arrowFallbackWarned = false
 local function scaleBox(tree, scale)
   local box = ui.construct(CLASS.scale, tree)
   box:SetStretch(USER_SPECIFIED)
@@ -229,7 +228,7 @@ function ui.newPage(ctx)
     end
     local bad = type(opts) ~= "table"
     if not bad then
-      bad = (wrapAllowed and opts.wrap ~= nil and type(opts.wrap) ~= "boolean")
+      bad = (opts.wrap ~= nil and (not wrapAllowed or type(opts.wrap) ~= "boolean"))
         or (opts.size ~= nil and opts.size ~= "normal" and opts.size ~= "small")
     end
     if bad then
@@ -418,17 +417,21 @@ function ui.newPage(ctx)
     end
     local texture = ui.findTexture(ui.ARROW_TEXTURE, ctx.log)
     if texture == nil then
-      ctx.log(
-        string.format(
-          "mod %s: the arrow picture is not available, so the %s arrow is a small button labelled %s",
-          ctx.owner,
-          direction,
-          direction == "next" and '">"' or '"<"'
+      if not arrowFallbackWarned then
+        arrowFallbackWarned = true
+        ctx.log(
+          string.format(
+            "mod %s: the arrow picture is not available, so arrows are small buttons labelled < and >",
+            ctx.owner
+          )
         )
-      )
+      end
       local fallback = makeButton(hbox, direction == "next" and ">" or "<", onClick, extraCheck, true)
       return {
         enable = function(_, on)
+          if type(on) ~= "boolean" then
+            error("arrow:enable needs true or false", 2)
+          end
           fallback:enable(on)
         end,
       }
@@ -466,11 +469,8 @@ function ui.newPage(ctx)
         end
         local ok, problem = pcall(function()
           button:SetIsEnabled(on)
-          image:SetColorAndOpacity(on and GOLD or GREY)
         end)
-        if ok then
-          enabled = on
-        else
+        if not ok then
           ctx.log(
             string.format(
               "mod %s: an arrow could not be %s: %s",
@@ -479,6 +479,14 @@ function ui.newPage(ctx)
               tostring(problem)
             )
           )
+          return
+        end
+        enabled = on -- the routing flag changes only when the game accepted the change
+        local okColor, colorProblem = pcall(function()
+          image:SetColorAndOpacity(on and GOLD or GREY)
+        end)
+        if not okColor then
+          ctx.log(string.format("mod %s: an arrow's color could not be set: %s", ctx.owner, tostring(colorProblem)))
         end
       end,
     }
@@ -522,14 +530,16 @@ function ui.newPage(ctx)
         if opts ~= nil and (type(opts) ~= "table" or (opts.small ~= nil and type(opts.small) ~= "boolean")) then
           error("row:button takes an optional table { small = true or false }", 2)
         end
-        return makeButton(hbox, label, onClick, extraCheck, opts and opts.small)
+        local handle = makeButton(hbox, label, onClick, extraCheck, opts and opts.small)
+        return handle -- not a tail call: a tail call would drop the mod's frame from the error level
       end
       -- direction is "previous" or "next".
       function row.arrow(_, direction, onClick)
         if not rowLive() then
           return inertArrow()
         end
-        return makeArrow(hbox, direction, onClick, extraCheck)
+        local handle = makeArrow(hbox, direction, onClick, extraCheck)
+        return handle -- not a tail call: a tail call would drop the mod's frame from the error level
       end
     end
     return row
