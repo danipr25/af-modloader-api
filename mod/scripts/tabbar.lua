@@ -103,7 +103,7 @@ local function readGeometry(group, knownPadding)
     overlay = overlay,
     box = box,
     padding = original,
-    available = width - original.Left,
+    available = width - original.Left - original.Right,
     translationY = group.RenderTransform.Translation.Y + 0.0,
   }
 end
@@ -136,7 +136,7 @@ local function makeArrow(state, geometry, side, texture)
   if not isValid(tabClass) then
     error("the tab class is not loaded", 0)
   end
-  local controller = FindFirstOf("PlayerController")
+  local controller = ui.playerController()
   local container = ui.construct("/Script/UMG.Overlay", state.tree)
   local tab = library:Create(state.panel, tabClass, controller)
   container:AddChildToOverlay(tab)
@@ -230,19 +230,33 @@ function Bar:moveBoxLast(rec)
   if not ok then
     -- The pages must never disappear: if the box left the overlay, put it back; if it is back with a new slot, give
     -- that slot the old padding and alignments.
+    local back = false
     pcall(function()
       if not isValid(box:GetParent()) then
         geometry.overlay:AddChildToOverlay(box)
       end
+      back = isValid(box:GetParent())
       if kept then
         restoreSlot(box.Slot)
       end
     end)
-    self:note(
-      rec,
-      "order",
-      "could not put the page box over the tab bar arrows (" .. tostring(problem) .. "): they are drawn over its frame"
-    )
+    if back then
+      self:note(
+        rec,
+        "order",
+        "could not put the page box over the tab bar arrows ("
+          .. tostring(problem)
+          .. "): they are drawn over its frame"
+      )
+    else
+      self:note(
+        rec,
+        "order",
+        "could not put the pages of the TAB menu back after moving them ("
+          .. tostring(problem)
+          .. "). Load the save again to get them back."
+      )
+    end
   end
 end
 
@@ -298,6 +312,12 @@ end
 -- a UE4SS mods restart, the Lua state does not): old arrows are removed, the padding they needed is taken off (the
 -- result is the bar's original padding) and every tab is shown. Runs before anything else reads the padding.
 function Bar:cleanLeftovers(rec, group)
+  local okShow, showProblem = pcall(function()
+    setVisibility(entriesOf(group), VISIBLE)
+  end)
+  if not okShow then
+    self:note(rec, "leftoverShow", "could not show every tab of the TAB bar: " .. tostring(showProblem))
+  end
   local ok, problem = pcall(function()
     local overlay = group:GetParent()
     if not isValid(overlay) or className(overlay) ~= "Overlay" then
@@ -339,7 +359,6 @@ function Bar:cleanLeftovers(rec, group)
         string.format("removed %d hidden tab bar arrow(s) left over from before a mods restart", found)
       )
     end
-    setVisibility(entriesOf(group), VISIBLE)
   end)
   if not ok then
     self:note(rec, "leftover", "could not clean up the tab bar after a mods restart: " .. tostring(problem))
@@ -360,7 +379,9 @@ function Bar:reset(rec, group)
       group.Slot:SetPadding(rec.geometry.padding)
     end
     for _, arrow in pairs(rec.arrows or {}) do
-      arrow.container:SetVisibility(COLLAPSED)
+      if isValid(arrow.container) then
+        arrow.container:SetVisibility(COLLAPSED)
+      end
     end
   end)
   if not ok then
@@ -423,13 +444,17 @@ local function show(rec, group, entries, window)
     })
     for side, arrow in pairs(rec.arrows) do
       local canMove = side == "next" and window.canNext or side == "previous" and window.canPrev
-      arrow.container:SetVisibility(VISIBLE)
-      arrow.image:SetColorAndOpacity(canMove and GOLD or GREY)
+      if isValid(arrow.container) and isValid(arrow.image) then
+        arrow.container:SetVisibility(VISIBLE)
+        arrow.image:SetColorAndOpacity(canMove and GOLD or GREY)
+      end
     end
   else
     group.Slot:SetPadding(padding)
     for _, arrow in pairs(rec.arrows or {}) do
-      arrow.container:SetVisibility(COLLAPSED)
+      if isValid(arrow.container) then
+        arrow.container:SetVisibility(COLLAPSED)
+      end
     end
   end
 end
@@ -476,10 +501,37 @@ function Bar:apply(state, rec, group)
   rec.window = window
 end
 
+-- Whether what a record remembers no longer matches the live panel: the bar sits in another overlay, or the page box
+-- or an arrow is gone (the game rebuilt the panel under the same address, or a leftover Lua state's widgets died).
+local function isStale(rec, group)
+  local geometry = rec.geometry
+  if not geometry then
+    return false
+  end
+  local ok, stale = pcall(function()
+    if addressOf(group:GetParent()) ~= addressOf(geometry.overlay) or not isValid(geometry.box) then
+      return true
+    end
+    for _, arrow in pairs(rec.arrows or {}) do
+      if not (isValid(arrow.container) and isValid(arrow.image) and isValid(arrow.tab)) then
+        return true
+      end
+    end
+    return false
+  end)
+  return not ok or stale
+end
+
 -- Called when the TAB menu opens, after Tabs:ensure ('healthy' is whether ensure found the panel as expected), and
 -- after an arrow click. An unhealthy menu gets its bar back as the game made it.
 function Bar:update(state, group, healthy)
   local rec = state.bar
+  if rec and isStale(rec, group) then
+    for _, arrow in pairs(rec.arrows or {}) do
+      self.clicks:forget(arrow.address)
+    end
+    rec = nil -- start fresh, as for a new panel
+  end
   if not rec then
     rec = { first = 1, logged = {} }
     state.bar = rec

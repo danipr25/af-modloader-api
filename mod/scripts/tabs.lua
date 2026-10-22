@@ -624,7 +624,12 @@ function Tabs:install()
         if isValid(panel) and isValid(group) then
           local s = structure(panel)
           if s and addressOf(s.group) == addressOf(group) then
-            self:ensure(panel, "group PreConstruct")
+            local healthy = self:ensure(panel, "group PreConstruct")
+            -- A rebuild makes every button visible again: if paging was applied, apply the window again.
+            local state = self.state
+            if state and state.bar and state.bar.touched then
+              self:updateBar(panel, healthy)
+            end
           end
         end
       end,
