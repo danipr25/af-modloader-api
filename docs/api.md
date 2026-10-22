@@ -1,6 +1,6 @@
 # API reference
 
-AF Mod Loader API 0.1.4 for mod authors. Game 1.1.5024, UE4SS 1181, AF Mod Loader 0.1.0.
+AF Mod Loader API 0.1.5 for mod authors. Game 1.1.5024, UE4SS 1181, AF Mod Loader 0.1.0.
 
 Each function says what is **verified in game** and what is **not verified yet**. Nothing marked "not verified" has run in the game: it is written from the UE4SS and Unreal Engine documentation, wrapped so that a failure is logged instead of crashing, and waits for the in-game test. Verified findings are recorded in [tab-menu.md](tab-menu.md) and [console.md](console.md).
 
@@ -8,15 +8,15 @@ Each function says what is **verified in game** and what is **not verified yet**
 
 ### Versions
 
-The API is 0.x until 1.0. A patch version (0.1.4) fixes things or adds functions and never breaks a mod. A minor version (0.2.0) may break mods, and the changelog says how. So a mod depends on one minor line of the API, and of the loader, which follows the same rule:
+The API is 0.x until 1.0. A patch version (0.1.5) fixes things or adds functions and never breaks a mod. A minor version (0.2.0) may break mods, and the changelog says how. So a mod depends on one minor line of the API, and of the loader, which follows the same rule:
 
 ```json
 "depends": { "af-modloader": ">=0.1.0 <0.2.0", "af-modloader-api": ">=0.1.0 <0.2.0" }
 ```
 
-`api.version` is the installed version as text, like `"0.1.4"`.
+`api.version` is the installed version as text, like `"0.1.5"`.
 
-Raise the lower bound to the first version that has every call your mod uses. `page:row()`, `row:button`, `page:grid()` and clicks on tiles came with 0.1.1, so a mod that uses them depends on `"af-modloader-api": ">=0.1.1 <0.2.0"`. A mod that does not use them keeps working with `>=0.1.0`. `api.world` came with 0.1.2, so a mod that uses it depends on `"af-modloader-api": ">=0.1.2 <0.2.0"`. `text:color`, `page:text(str, { wrap = true })` and `button:enable` came with 0.1.3, so a mod that uses them depends on `"af-modloader-api": ">=0.1.3 <0.2.0"`.
+Raise the lower bound to the first version that has every call your mod uses. `page:row()`, `row:button`, `page:grid()` and clicks on tiles came with 0.1.1, so a mod that uses them depends on `"af-modloader-api": ">=0.1.1 <0.2.0"`. A mod that does not use them keeps working with `>=0.1.0`. `api.world` came with 0.1.2, so a mod that uses it depends on `"af-modloader-api": ">=0.1.2 <0.2.0"`. `text:color`, `page:text(str, { wrap = true })` and `button:enable` came with 0.1.3, so a mod that uses them depends on `"af-modloader-api": ">=0.1.3 <0.2.0"`. `page:text(str, { size = "small" })`, `row:text(str, { size = "small" })`, `row:button(label, onClick, { small = true })` and `row:arrow` came with 0.1.5, so a mod that uses them depends on `"af-modloader-api": ">=0.1.5 <0.2.0"`. 0.1.5 also centers the contents of rows vertically, for every mod.
 
 ### Threads
 
@@ -103,14 +103,17 @@ Adds a line of text. `text:set(str)` changes it. `text:color(r, g, b, a)` change
 
 `opts` is optional: `{ wrap = true }` makes a long line wrap at the panel's edge. Without it the line runs past the edge, as before. `opts` must be nil or a table whose `wrap` is a boolean, otherwise it is an error. On a page handle kept past its page, `page:text` does nothing and checks nothing. Wrapping is only offered for texts made by `page:text` (rows are horizontal, so wrapping there is not verified).
 
+`size` is optional: `"normal"` (the default) or `"small"`, anything else is an error. A small text is drawn at 0.7 of its size, keeps its real layout size and, on a page, starts at the left edge. `size = "small"` cannot be combined with `wrap` (error): a small line must be short. `row:text(str, { size = "small" })` works the same in a row (and in a list row). The handle (`set`, `color`) is the same.
+
 ```lua
 local heading = page:text("Recipes")
 heading:set("Recipes (3)")
 heading:color(1.0, 0.75, 0.2, 1.0) -- gold
 page:text("A long explanation that should stay inside the panel.", { wrap = true })
+page:text("Normal cauldron, 2752 recipes", { size = "small" })
 ```
 
-Status: the text (a `TextBlock`) is **verified in game**. `color` (`SetColorAndOpacity`) and `wrap` (`SetAutoWrapText(true)`) are **verified in game** (2026-10-21, game 1.1.5023): first in a probe on texts already shown, then with API 0.1.3 and the template, set at build time (a gold page heading, a grey row text, a long page line that wraps at the panel's edge). Color on list texts is not verified (same widget class).
+Status: the text (a `TextBlock`) is **verified in game**. `color` (`SetColorAndOpacity`) and `wrap` (`SetAutoWrapText(true)`) are **verified in game** (2026-10-21, game 1.1.5023): first in a probe on texts already shown, then with API 0.1.3 and the template, set at build time (a gold page heading, a grey row text, a long page line that wraps at the panel's edge). Color on list texts is not verified (same widget class). Small text: a `TextBlock` inside a `ScaleBox` at 0.7 is **verified in game** in a probe (2026-10-22, game 1.1.5024, see [widgets.md](widgets.md)); left-aligning its slot on a page (`SetHorizontalAlignment` on the vertical box slot) and the `size` option through the API are **not verified**.
 
 ### `page:input(spec)` returns `input`
 
@@ -135,18 +138,28 @@ Adds a horizontal row on the page itself: things placed side by side.
 
 - `row:text(str)` adds text and returns a text handle (`:set`).
 - `row:item(itemName, count)` adds the game's item tile, like in a list row.
-- `row:button(label, onClick)` adds the game's button with `label` as its text and returns a button handle. `onClick()` is called when the player clicks it. `button:set(label)` changes the label. `button:enable(on)` enables (`true`) or disables (`false`) it: a disabled button is grey and ignores clicks. `on` must be a boolean, otherwise it is an error, also on a handle whose page was rebuilt; only a handle made on a page that was already gone does nothing and checks nothing. Buttons start enabled; call `enable(false)` right after adding the button to its row, and keep the handle to enable it again later.
+- `row:button(label, onClick, opts)` adds the game's button with `label` as its text and returns a button handle. `onClick()` is called when the player clicks it. `button:set(label)` changes the label. `button:enable(on)` enables (`true`) or disables (`false`) it: a disabled button is grey and ignores clicks. `on` must be a boolean, otherwise it is an error, also on a handle whose page was rebuilt; only a handle made on a page that was already gone does nothing and checks nothing. Buttons start enabled; call `enable(false)` right after adding the button to its row, and keep the handle to enable it again later. `opts` is optional: `{ small = true }` draws a smaller button (the game's button inside a `ScaleBox` at 0.6, same handle and clicks). `opts` must be nil or a table whose `small` is a boolean, otherwise it is an error.
+- `row:arrow(direction, onClick)` adds a small arrow button, `direction` being `"previous"` (points left) or `"next"` (points right), anything else is an error. It is the game's button inside a `ScaleBox` at 0.6 with the game's gold arrow picture on top. The handle has only `enable(on)`: like `button:enable`, but the arrow is also grey when disabled and gold when enabled. If the picture cannot be found, the arrow is a small button labelled `<` or `>` and one line is logged.
+
+Rows center their contents vertically (API 0.1.5): a text, an item tile, a button and an arrow in the same row share a middle line. This applies to page rows and list rows.
 
 ```lua
 local row = page:row()
 local previous = row:button("Previous", function() showPage(current - 1) end)
 previous:enable(false) -- grey on the first page
 row:button("Next", function() showPage(current + 1) end)
+
+-- A compact pager: small arrows with a small text between them.
+local pager = page:row()
+local back = pager:arrow("previous", function() showPage(current - 1) end)
+pager:text("1 / 5", { size = "small" })
+local forward = pager:arrow("next", function() showPage(current + 1) end)
+back:enable(false)
 ```
 
 Buttons live in rows made with `page:row()`. List rows (`list:row()`) have no buttons. About three buttons fit in a row: a fourth runs past the panel.
 
-Status: `HorizontalBox` and the button (`WBP_ButtonBase_C` created with `Create`, label with `SetButtonText`) are **verified in game** in a spike (2026-10-21, see [widgets.md](widgets.md)). The API's own `row:button`, with a click that calls `tab:refresh()`, is **verified in game** too (2026-10-21, API 0.1.1): one effect per click, also after many fast clicks. `enable` (`SetIsEnabled`) is **verified in game** in a probe (2026-10-21): the button turns grey and clicks do nothing. Also verified with API 0.1.3 and the template (2026-10-21): a button disabled at build time is grey and ignores clicks, stays grey after closing and reopening the TAB menu, and works again after another button calls `enable(true)`. The click router also skips a button its handle marked disabled, as a second guard.
+Status: `HorizontalBox` and the button (`WBP_ButtonBase_C` created with `Create`, label with `SetButtonText`) are **verified in game** in a spike (2026-10-21, see [widgets.md](widgets.md)). The API's own `row:button`, with a click that calls `tab:refresh()`, is **verified in game** too (2026-10-21, API 0.1.1): one effect per click, also after many fast clicks. `enable` (`SetIsEnabled`) is **verified in game** in a probe (2026-10-21): the button turns grey and clicks do nothing. Also verified with API 0.1.3 and the template (2026-10-21): a button disabled at build time is grey and ignores clicks, stays grey after closing and reopening the TAB menu, and works again after another button calls `enable(true)`. The click router also skips a button its handle marked disabled, as a second guard. **Not verified through the API** (API 0.1.5): the centering of row children (`SetVerticalAlignment` on the `HorizontalBoxSlot` is verified in a probe, 2026-10-22), `{ small = true }` and `row:arrow`. The probe verified a `ScaleBox` at 0.6 around the game's button (looks smaller, clicks arrive as usual) and the arrow overlay (button, gold arrow picture, clicks arrive); the arrow picture's size (64 before scaling) is a guess, the in-game test checks it. Row text, button and arrow slots that the game refuses to center are logged once.
 
 ### `page:grid()` returns `grid`
 
@@ -318,6 +331,8 @@ Status: **verified in game** with a throwaway mod (the console opens with both k
 | `WrapBox:ClearChildren` | `grid:clear()` | verified in game (API 0.1.1) |
 | `WBP_ButtonBase_C:SetIsEnabled` | `button:enable(on)` | verified in a probe (2026-10-21): grey, clicks ignored |
 | `TextBlock:SetColorAndOpacity` | `text:color(r, g, b, a)` | verified on page and row texts (2026-10-21); list texts not verified |
+| `ScaleBox` (`SetStretch(7)`, `SetUserSpecifiedScale`), `Overlay`, `Image:SetDesiredSizeOverride`, `Image:SetRenderScale` | Small text and buttons, arrow buttons (`row:arrow`) | `ScaleBox` and the arrow overlay verified in a probe (2026-10-22, game 1.1.5024); not verified through the API (API 0.1.5) |
+| `HorizontalBoxSlot:SetVerticalAlignment(2)`, `VerticalBoxSlot:SetHorizontalAlignment(1)` | Centered rows (0.1.5), left-aligned small text on a page | the horizontal box slot is verified in a probe (2026-10-22); the vertical box slot call is not verified |
 | `TextBlock:SetAutoWrapText` | `page:text(str, { wrap = true })` | verified in a probe (2026-10-21) |
 | `WidgetSwitcher:GetChildIndex`, `GetChildAt`, `GetActiveWidgetIndex`, `SetActiveWidgetIndex`, widget `RemoveFromParent` | Check where our pages are, keep the highlight, clean up | not verified |
 | `FindAllOf`, `GetOuter` | Fallback lookup of the tab bar if the member names change | not verified |

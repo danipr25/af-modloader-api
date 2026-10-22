@@ -57,6 +57,33 @@ tab = api.tabs.add({
       locked:enable(true)
     end)
 
+    -- Small text and a small button: size = "small" and { small = true } draw them smaller (a small text cannot
+    -- wrap). An arrow button has a direction, "previous" or "next", and enable() greys it at the ends.
+    page:text("A small line of text", { size = "small" })
+    local pagerRow = page:row()
+    pagerRow:button("Small", function()
+      message = "The small button was clicked"
+      heading:set(message)
+    end, { small = true })
+    local PAGES, shown = 3, 1
+    local previousArrow, nextArrow
+    local pageLabel = pagerRow:text("", { size = "small" })
+    local function showPager()
+      pageLabel:set(string.format("Page %d of %d", shown, PAGES))
+      previousArrow:enable(shown > 1)
+      nextArrow:enable(shown < PAGES)
+    end
+    previousArrow = pagerRow:arrow("previous", function()
+      shown = shown - 1
+      showPager()
+    end)
+    pagerRow:text(" ", { size = "small" })
+    nextArrow = pagerRow:arrow("next", function()
+      shown = shown + 1
+      showPager()
+    end)
+    showPager()
+
     -- A grid of item tiles that scrolls. Clicking a tile calls onClick with the item name.
     local grid = page:grid()
     local function fillGrid()

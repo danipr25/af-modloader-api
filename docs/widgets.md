@@ -41,6 +41,16 @@ A `WrapBox` (`/Script/UMG.WrapBox`, created with `StaticConstructObject` and out
 - A click calls `BndEvt__WBP_IconButton_Btn_Icon_K2Node_ComponentBoundEvent_0_OnButtonClickedEvent__DelegateSignature`; a post hook on it receives the button as the context.
 - Its icon was not set in the test (it showed the game's default).
 
+## Smaller widgets: `ScaleBox`
+
+Verified in game with a throwaway probe (layout probe 2, 2026-10-22, game 1.1.5024). All widgets were created with `StaticConstructObject` and outer `panel.WidgetTree`; buttons with `Create`.
+
+- A `ScaleBox` (`/Script/UMG.ScaleBox`) with `SetStretch(7)` (UserSpecified) and `SetUserSpecifiedScale(0.7)` around a `TextBlock` shows the text at 0.7 and keeps its real layout size. Unlike `SetRenderScale`, which keeps the layout size of the unscaled widget, the box takes the room of the scaled child. Added to a page's `VerticalBox` it was centered horizontally (the slot default), so the page text needs `SetHorizontalAlignment(1)` on its slot.
+- A `ScaleBox` at 0.6 around a `WBP_ButtonBase_C` gives a smaller button in the game's style. Clicks arrive through `HandleButtonClicked` with the button's address, as usual.
+- Arrow button: `ScaleBox` 0.6 > `Overlay` [ `WBP_ButtonBase_C` with an empty text, `Image` with `T_UI_RightArrow` (`SetBrushFromTexture`, `SetDesiredSizeOverride`, gold `SetColorAndOpacity`, `HitTestInvisible`) centered in the overlay slot ]. Clicks arrive. An image of 40 looked tiny inside the scaled button, so the API uses 64 (before scaling): that value is a guess, to be confirmed by the in-game test.
+- Rejected: a `SizeBox` of 64 x 64 around the button squashes the button's art.
+- `HorizontalBoxSlot:SetVerticalAlignment(2)` (center) on every child of a row puts a text next to a button or an item tile at mid height.
+
 ## Seen in the test
 
 - A long `TextBlock` line does not wrap: it runs past the panel's edge. `SetAutoWrapText(true)` makes it wrap at the panel's edge (probe and API 0.1.3 template, 2026-10-21, both on a shown text and set at build time).
