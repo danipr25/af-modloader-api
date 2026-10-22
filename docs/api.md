@@ -1,22 +1,22 @@
 # API reference
 
-AF Mod Loader API 0.1.6 for mod authors. Game 1.1.5024, UE4SS 1181, AF Mod Loader 0.1.0.
+AF Mod Loader API 0.1.7 for mod authors. Game 1.1.5024, UE4SS 1181, AF Mod Loader 0.1.0.
 
-Each function says what is **verified in game** and what is **not verified yet**. Nothing marked "not verified" has run in the game: it is written from the UE4SS and Unreal Engine documentation, wrapped so that a failure is logged instead of crashing, and waits for the in-game test. Verified findings are recorded in [tab-menu.md](tab-menu.md) and [console.md](console.md).
+Each function says what is **verified in game** and what is **not verified yet**. Nothing marked "not verified" has run in the game: it is written from the UE4SS and Unreal Engine documentation, wrapped so that a failure is logged instead of crashing, and waits for the in-game test. Verified findings are recorded in [tab-menu.md](tab-menu.md), [catalog-menu.md](catalog-menu.md) and [console.md](console.md).
 
 ## Contracts
 
 ### Versions
 
-The API is 0.x until 1.0. A patch version (0.1.6) fixes things or adds functions and never breaks a mod. A minor version (0.2.0) may break mods, and the changelog says how. So a mod depends on one minor line of the API, and of the loader, which follows the same rule:
+The API is 0.x until 1.0. A patch version (0.1.7) fixes things or adds functions and never breaks a mod. A minor version (0.2.0) may break mods, and the changelog says how. So a mod depends on one minor line of the API, and of the loader, which follows the same rule:
 
 ```json
 "depends": { "af-modloader": ">=0.1.0 <0.2.0", "af-modloader-api": ">=0.1.0 <0.2.0" }
 ```
 
-`api.version` is the installed version as text, like `"0.1.6"`.
+`api.version` is the installed version as text, like `"0.1.7"`.
 
-Raise the lower bound to the first version that has every call your mod uses. `page:row()`, `row:button`, `page:grid()` and clicks on tiles came with 0.1.1, so a mod that uses them depends on `"af-modloader-api": ">=0.1.1 <0.2.0"`. A mod that does not use them keeps working with `>=0.1.0`. `api.world` came with 0.1.2, so a mod that uses it depends on `"af-modloader-api": ">=0.1.2 <0.2.0"`. `text:color`, `page:text(str, { wrap = true })` and `button:enable` came with 0.1.3, so a mod that uses them depends on `"af-modloader-api": ">=0.1.3 <0.2.0"`. `page:text(str, { size = "small" })`, `row:text(str, { size = "small" })`, `row:button(label, onClick, { small = true })` and `row:arrow` came with 0.1.5, so a mod that uses them depends on `"af-modloader-api": ">=0.1.5 <0.2.0"`. 0.1.5 also centers the contents of rows vertically, for every mod. `row:item(name, 1, { onClick = fn })`, a clickable item tile in a page row, came with 0.1.6, so a mod that uses it depends on `"af-modloader-api": ">=0.1.6 <0.2.0"`.
+Raise the lower bound to the first version that has every call your mod uses. `page:row()`, `row:button`, `page:grid()` and clicks on tiles came with 0.1.1, so a mod that uses them depends on `"af-modloader-api": ">=0.1.1 <0.2.0"`. A mod that does not use them keeps working with `>=0.1.0`. `api.world` came with 0.1.2, so a mod that uses it depends on `"af-modloader-api": ">=0.1.2 <0.2.0"`. `text:color`, `page:text(str, { wrap = true })` and `button:enable` came with 0.1.3, so a mod that uses them depends on `"af-modloader-api": ">=0.1.3 <0.2.0"`. `page:text(str, { size = "small" })`, `row:text(str, { size = "small" })`, `row:button(label, onClick, { small = true })` and `row:arrow` came with 0.1.5, so a mod that uses them depends on `"af-modloader-api": ">=0.1.5 <0.2.0"`. 0.1.5 also centers the contents of rows vertically, for every mod. `row:item(name, 1, { onClick = fn })`, a clickable item tile in a page row, came with 0.1.6, so a mod that uses it depends on `"af-modloader-api": ">=0.1.6 <0.2.0"`. `api.tabs.add` with `menu = "catalog"` (a tab in the V menu), `tab:select()` and `api.catalog.section` (a section on the V menu's item sheet) came with 0.1.7, so a mod that uses them depends on `"af-modloader-api": ">=0.1.7 <0.2.0"`.
 
 ### Threads
 
@@ -34,17 +34,17 @@ Every function a mod gives the API (`build`, `run`, `onChange`, click callbacks)
 
 ### When to register
 
-`tabs.add` and `console.add` work only while your mod's entrypoint (`scripts/main.lua`) runs, at its top level. Calls made after the API has sealed its registry (at the first game start, or the first time the TAB menu is built, which is after every entrypoint) raise an error that says so. This keeps the tab order fixed and lets the API decide about the console after every mod has registered.
+`tabs.add`, `catalog.section` and `console.add` work only while your mod's entrypoint (`scripts/main.lua`) runs, at its top level. Calls made after the API has sealed its registry (at the first game start, or the first time the TAB menu or the V menu is built, which is after every entrypoint) raise an error that says so. This keeps the tab order fixed and lets the API decide about the console after every mod has registered.
 
 ### Restarting mods and re-entrancy
 
-Removing the tabs when UE4SS restarts its mods ships disabled until it is verified in game (UE4SS may run unload code off the game thread). After a UE4SS mods restart the tabs stay inactive until a save is loaded again; the log says so ("load the save again or restart the game"). Titles that the game itself uses (Player, World, Recognition) cannot be used for a tab.
+Removing the tabs when UE4SS restarts its mods ships disabled until it is verified in game (UE4SS may run unload code off the game thread). After a UE4SS mods restart the tabs stay inactive until a save is loaded again; the log says so ("load the save again or restart the game"). Titles that the game itself uses cannot be used for a tab: Player, World and Recognition in the TAB menu, Materials, Goods, Stats and Ledger in the V menu. A title is unique across both menus.
 
 Calling `tab:refresh()` while a page is being built is ignored with a log line. Inside `onChange`, update the handles you already have (`text:set`, `list:clear()` and new rows), and do not call `refresh`.
 
 ### When the game's menu is not what we expect
 
-If the TAB menu does not have the structure described in [tab-menu.md](tab-menu.md) (for example after a game patch), the API leaves the menu untouched, writes one line to `UE4SS.log` and your tabs do not appear. Nothing is added half way.
+If the TAB menu or the V menu does not have the structure described in [tab-menu.md](tab-menu.md) and [catalog-menu.md](catalog-menu.md) (for example after a game patch), the API leaves the menu untouched, writes one line to `UE4SS.log` and your tabs do not appear. Nothing is added half way. The same goes for the V menu's item sheet and sections.
 
 ## Getting the API
 
@@ -58,21 +58,26 @@ local api = AF.require("af-modloader-api").use(AF)
 
 ### `api.tabs.add(spec)` returns `tab`
 
-Adds a tab to the TAB menu (the screen with Player, World and Recognition).
+Adds a tab to the TAB menu (the screen with Player, World and Recognition), or, with `menu = "catalog"`, to the V menu (the item catalog with Materials, Goods, Stats and Ledger).
 
 ```lua
 local tab = api.tabs.add({
   id = "recipes",            -- 1 to 32 characters: a-z, 0-9, "-" and "_". Unique within your mod.
-  title = "Cauldron Recipes", -- the tab button's text, 1 to 40 characters, unique among all mods
+  title = "Cauldron Recipes", -- the tab button's text, 1 to 40 characters, unique among all mods and menus
   build = function(page)      -- fills the page; runs again on tab:refresh()
     page:text("Hello")
   end,
+  menu = "tab",               -- optional (API 0.1.7): "tab" (the TAB menu, the default) or "catalog" (the V menu)
 })
 ```
 
+`menu` must be nil, `"tab"` or `"catalog"`, anything else is an error. The page widgets and the handle rules are the same in both menus. The tab id is unique within your mod across both menus.
+
+**The V menu** (API 0.1.7): the tab is added after Materials, Goods, Stats and Ledger. Its pages are padded so the text does not sit on the panel's frame. There is no paging of the V menu's bar: with five tabs it fits, more are not handled. The panel class is not loaded when the game starts, so the API hooks the V menu when its class appears (see [catalog-menu.md](catalog-menu.md)); if that timing fails, the tab appears the next time the V menu opens. Status of the V menu's tabs: the mechanism (a title in `TitleList`, `PreConstruct`, a page in `SW_Main`) with one extra tab is **verified in game in a probe** (2026-10-22, game 1.1.5024); the API's own implementation, the padding values, the highlighted tab after a rebuild (read from `CurrentActivePage`), the lazy hook registration and more than one tab in this menu are **not verified**.
+
 Tabs appear after the game's own, in the order mods registered them (which follows the loader's load order). A duplicate id or title is refused with a log line naming both mods; you get a tab that does nothing so your mod keeps running. Invalid arguments raise an error.
 
-Status: **verified in game** for one tab (2026-10-21, game 1.1.5023): the tab is added on the first open, the highlighted tab is right, reopening adds nothing, `refresh()` from a console command rebuilds the page, and after loading another save the new menu gets the tab once. The group's `PreConstruct` hook fires before `BP_OnActivated`, and the tab is added from it. Two tabs from two mods are **verified** too: each opens its own page and the game's pages stay right. After a UE4SS mods restart (Ctrl+R with `EnableHotReloadSystem = 1`) the old tabs stay but do nothing, the log says to load the save again, and after loading it the tabs work again, once each; no crash. Removal on restart stays disabled and **not verified**.
+Status of the TAB menu: **verified in game** for one tab (2026-10-21, game 1.1.5023): the tab is added on the first open, the highlighted tab is right, reopening adds nothing, `refresh()` from a console command rebuilds the page, and after loading another save the new menu gets the tab once. The group's `PreConstruct` hook fires before `BP_OnActivated`, and the tab is added from it. Two tabs from two mods are **verified** too: each opens its own page and the game's pages stay right. After a UE4SS mods restart (Ctrl+R with `EnableHotReloadSystem = 1`) the old tabs stay but do nothing, the log says to load the save again, and after loading it the tabs work again, once each; no crash. Removal on restart stays disabled and **not verified**.
 
 Paging: the game's tab bar has a fixed width. When the tabs do not all fit, the API shows as many whole tabs as fit with an arrow at each end, and a click on an arrow moves the view (next brings at least the next tab into view and fills the view; previous brings at least the previous tab into view and fills the view; any mouse button works; no wrap-around; an arrow that cannot move is grey and does nothing). Every tab is at least 128 wide and wider with a long title, so short titles fit more tabs. The bar has room for 564 without arrows: the game's three tabs take 410, so without paging only one more tab fits (up to 154 wide; a 128-wide tab such as "Recipes" fits). When paged, 428 is left for tabs (about 3 at a time). Nothing changes when they all fit. Only the TAB menu is affected. Status: **verified in game** with API 0.1.4 build a3d30e8, Cauldron Recipes and the template (five tabs; 2026-10-22, game 1.1.5024): as many tabs as fit, arrows under the panel frame, each click brings a new tab, grey at the ends, every visible tab opens its own page, the view stays when TAB is closed and opened many times, after loading the save again paging works on the new menu, and the other panels with tab bars are unchanged. **Not verified**: the cleanup after a UE4SS mods restart (no restart appears in the test logs). See [tab-menu.md](tab-menu.md).
 
@@ -92,6 +97,44 @@ api.console.add({
 ```
 
 Status: **not verified**.
+
+### `tab:select()` returns `true` or `false`
+
+Selects the tab, as if the player clicked it (API 0.1.7). Only for tabs of the V menu (`menu = "catalog"`), and only while the V menu is open: it returns `true` when the selection was scheduled, `false` when the V menu is closed, the tab is not in it, or the tab belongs to the TAB menu (not supported in this version: `OnEntryClick` from Lua is not verified there, and the paging could hide the tab). It does not open menus. The click itself is deferred to the game thread (`ExecuteInGameThread`), so it is safe to call from a click callback.
+
+```lua
+-- A button on the item sheet opens your tab.
+section:row():button("Recipes", function()
+  tab:select()
+end, { small = true })
+```
+
+Status: `OnEntryClick(index)` on the V menu's tab bar, called from a button click through `ExecuteInGameThread`, is **verified in game in a probe** (2026-10-22, game 1.1.5024). The API's `select` is **not verified**.
+
+## Item sheet sections
+
+### `api.catalog.section(spec)` returns `true`, or `false` when refused
+
+Adds a section to the item sheet of the V menu (API 0.1.7): the panel that shows an item, with "Used in Crafting" and the records. Register it in your entrypoint, like tabs.
+
+```lua
+api.catalog.section({
+  id = "cauldron",                    -- 1 to 32 characters: a-z, 0-9, "-" and "_". Unique within your mod.
+  build = function(section, itemName) -- runs after the game shows an item; itemName is its row name
+    section:text("Cauldron: 3 recipes", { size = "small" })
+    local row = section:row()
+    row:button("Recipes", function() end, { small = true })
+  end,
+})
+```
+
+After every time the game shows an item (`UpdateContent`), the API clears your section on that sheet and runs `build` again for the new item. Materials and Goods are different sheets and each gets the section. A `build` that writes nothing leaves the section empty (it takes no room), which is how a mod shows nothing for an item it has nothing to say about. The section sits under "Used in Crafting", above the records, and is one box per mod.
+
+`section` is a restricted page: `section:text(str, opts)` (the same `opts` and handle as `page:text`: `wrap` and `size`) and `section:row()` with `row:text` and `row:button` only (no items, arrows, inputs, lists or grids). Handles are valid until the next build of the section, which is the next item shown on that sheet: keep none across items. An error in `build` is logged with the mod id and the item, once with the stack trace and then in short, and the section stays empty. Clicks on section buttons work while the sheet is shown. A duplicate id is refused with a log line and `false`; invalid arguments raise an error.
+
+Items shown before the API's hook exists have no section: the hook is registered when the V menu panel is first seen, and the first `UpdateContent` after that builds it.
+
+Status: building a section under `Vtb_UsedIn:GetParent()` (a gold text and a row with a button) and its clicks are **verified in game in a probe** (2026-10-22, game 1.1.5024). **Not verified**: the API's implementation, clearing and rebuilding a section inside the `UpdateContent` hook, and `GetParent()` on the section's box. See [catalog-menu.md](catalog-menu.md).
 
 ## Page widgets
 
@@ -324,7 +367,12 @@ Status: **verified in game** with a throwaway mod (the console opens with both k
 | Hook or object | Used for | Status |
 |---|---|---|
 | `WBP_PlayerGearPanel_C:BP_OnActivated` and `BP_OnDeactivated` | Add tabs when the TAB menu opens; start and stop the input polling | hookable, verified in game |
-| `WBP_TagSwitcherGroup_C:PreConstruct` | Notice the tab bar being rebuilt by the game | hookable, verified in game |
+| `WBP_CatalogPanel_C:BP_OnActivated` and `BP_OnDeactivated` (`/Game/Blueprints/WBP/CatalogPanel/`) | Add tabs when the V menu opens; start and stop the input polling | `BP_OnActivated` hookable and fires on every open, verified in a probe (2026-10-22, game 1.1.5024); registered when the class appears (it is not loaded at start), that registration is not verified |
+| `WBP_TagSwitcherGroup_C:PreConstruct` | Notice the tab bar being rebuilt by the game; also tells the API that the V menu's class exists | hookable, verified in game; firing for the V menu's group is not verified |
+| `WBP_CatalogContent_C:UpdateContent` | Rebuild the item sheet sections for the item shown | fires for every item shown, `ConfigName.ConfigName` is the item, verified in a probe (2026-10-22, game 1.1.5024) |
+| `WBP_CatalogContent_C` members `Vtb_UsedIn` (its `GetParent()`) and `WidgetTree`; `VerticalBox:AddChildToVerticalBox`, `ClearChildren` | The section's place and rebuild | appending under `Vtb_UsedIn:GetParent()` verified in a probe; `ClearChildren` of a section and `GetParent()` of our box not verified |
+| `WBP_CatalogPanel_C` members `WBP_TagSwitcherGroup`, `SW_Main`, `CurrentActivePage`; `WidgetSwitcherSlot:SetPadding`; `IsActivated` | The V menu's tab mechanism, padding of the pages, the highlighted tab, "is the menu open" | members and the mechanism verified in a probe (`CurrentActivePage` not fully); `SetPadding` and `IsActivated` not verified |
+| `WBP_TagSwitcherGroup_C:OnEntryClick(index)` | `tab:select()` | verified in a probe from a button click through `ExecuteInGameThread` (2026-10-22, game 1.1.5024) |
 | `WBP_TagSwitcher_C:OnMouseButtonDown` (path in [tab-menu.md](tab-menu.md)) | Clicks on the tab bar's arrows (fires for every tab button in the game, for any mouse button; the API ignores the ones it did not create) | hookable and fires once per click, verified in a probe (2026-10-22, game 1.1.5024); registered when the arrows are first made |
 | `SetVisibility`, `ForceLayoutPrepass`, `GetDesiredSize`, slot `SetPadding` on the tab bar and its tabs; `Overlay:AddChildToOverlay`; `Image:SetBrushFromTexture` | Paging the tab bar | verified in game (2026-10-22, game 1.1.5024, API 0.1.4); hiding the arrows when the tabs fit again is not verified (`SetVisibility` on the arrows themselves) |
 | `TagSwithcer.TitleList`, `EntryPanel:ClearChildren()`, `EntryList:Empty()`, `PreConstruct(false)`, `WidgetSwitcher_0:AddChild()` | The tab mechanism | verified in game |

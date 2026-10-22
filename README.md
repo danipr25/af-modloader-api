@@ -2,7 +2,7 @@
 
 Shared helpers for **Alchemy Factory** mods loaded by AF Mod Loader, so mods that touch the same part of the game coexist instead of overwriting each other. It is a regular mod that other mods depend on, and it includes a template for starting new mods.
 
-Status: version 0.1.6, in development. Each piece's in-game status is in docs/api.md. The API stays at 0.x, and may change, until 1.0.
+Status: version 0.1.7, in development. Each piece's in-game status is in docs/api.md. The API stays at 0.x, and may change, until 1.0.
 
 Unofficial fan project. Alchemy Factory belongs to its developers.
 
@@ -14,7 +14,7 @@ You only need this mod when another mod says it needs "AF Mod Loader API". Put t
 
 On its own, nothing you can see. When a mod uses it, the API can:
 
-- **Add tabs to the TAB menu** (the screen with Player, World and Recognition). The tabs are added while the game runs, in memory. No game file is changed.
+- **Add tabs to the TAB menu** (the screen with Player, World and Recognition) or to the V menu (the item catalog with Materials, Goods, Stats and Ledger), and **add a section to the V menu's item sheet**. They are added while the game runs, in memory. No game file is changed.
 - **Turn on the in-game console**, only if a mod added a console command. The console opens with F10 or the key left of 1.
 - It reads and writes nothing in your saves, makes no network connection, and writes no files. The only file it looks at is the optional `af-modloader-api.json` described below.
 
@@ -34,7 +34,7 @@ Then the API never turns the console on, and the commands of mods cannot be used
 
 - [docs/api.md](docs/api.md): the API, with an example for every function and what has been verified in the game.
 - [template/my-mod](template/my-mod): a starting point. Copy it, rename it, edit `scripts/main.lua`.
-- [docs/tab-menu.md](docs/tab-menu.md) and [docs/console.md](docs/console.md): how the game's TAB menu and console work, as verified in game.
+- [docs/tab-menu.md](docs/tab-menu.md), [docs/catalog-menu.md](docs/catalog-menu.md) and [docs/console.md](docs/console.md): how the game's TAB menu, V menu and console work, as verified in game.
 
 ```lua
 local api = AF.require("af-modloader-api").use(AF)
