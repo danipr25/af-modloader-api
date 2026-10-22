@@ -137,7 +137,7 @@ Status: the box, typing in it, `onChange` and the polling (with `LoopInGameThrea
 Adds a horizontal row on the page itself: things placed side by side.
 
 - `row:text(str)` adds text and returns a text handle (`:set`).
-- `row:item(itemName, count, opts)` adds the game's item tile, like in a list row. `opts` is optional and only for rows of a page (API 0.1.6): `{ onClick = function(itemName) end }` makes the tile clickable. A clickable tile is the game's `WBP_RecipeItemTile_C`, the one `grid:tile` makes, so it shows no count: `count` must be nil or 1, otherwise it is an error. A click with any mouse button calls `onClick(itemName)`, like on a grid tile. `opts` must be nil or a table whose `onClick` is a function, otherwise it is an error. A list row (`list:row()`) has no clickable tiles and rejects `opts` with an error (before 0.1.6 a third argument was ignored there). Unknown keys in `opts` are ignored. Two quick clicks on two different clickable tiles can both arrive before your code rebuilds the row, and removing the first one shifts the second: do not assume the position of the second tile is unchanged.
+- `row:item(itemName, count, opts)` adds the game's item tile, like in a list row. `opts` is optional and only for rows of a page (API 0.1.6): `{ onClick = function(itemName) end }` makes the tile clickable. A clickable tile is the game's `WBP_RecipeItemTile_C`, the one `grid:tile` makes, so it shows no count: `count` must be nil or 1, otherwise it is an error. A click with any mouse button calls `onClick(itemName)`, like on a grid tile. `opts` must be nil or a table whose `onClick` is a function, otherwise it is an error. A list row (`list:row()`) has no clickable tiles and rejects `opts` with an error (before 0.1.6 a third argument was ignored there). Unknown keys in `opts` are ignored. After a click that rebuilds the row, a second quick click hits whatever tile is now in that place (not verified in game).
 - `row:button(label, onClick, opts)` adds the game's button with `label` as its text and returns a button handle. `onClick()` is called when the player clicks it. `button:set(label)` changes the label. `button:enable(on)` enables (`true`) or disables (`false`) it: a disabled button is grey and ignores clicks. `on` must be a boolean, otherwise it is an error, also on a handle whose page was rebuilt; only a handle made on a page that was already gone does nothing and checks nothing. Buttons start enabled; call `enable(false)` right after adding the button to its row, and keep the handle to enable it again later. `opts` is optional: `{ small = true }` draws a smaller button (the game's button inside a `ScaleBox` at 0.6, same handle and clicks). `opts` must be nil or a table whose `small` is a boolean, otherwise it is an error.
 - `row:arrow(direction, onClick)` adds a small arrow button, `direction` being `"previous"` (points left) or `"next"` (points right), anything else is an error. It is the game's button inside a `ScaleBox` at 0.6 with the game's gold arrow picture on top. The handle has only `enable(on)`: like `button:enable`, but the arrow is also grey when disabled and gold when enabled. If the picture cannot be found, the arrow is a small button labelled `<` or `>` and one line is logged.
 
@@ -155,6 +155,10 @@ local back = pager:arrow("previous", function() showPage(current - 1) end)
 pager:text("1 / 5", { size = "small" })
 local forward = pager:arrow("next", function() showPage(current + 1) end)
 back:enable(false)
+
+-- An item tile the player can click (a page row only).
+local chosen = page:row()
+chosen:item("Wood", 1, { onClick = function(name) heading:set("You clicked " .. name) end })
 ```
 
 Buttons live in rows made with `page:row()`. List rows (`list:row()`) have no buttons. About three buttons fit in a row: a fourth runs past the panel.

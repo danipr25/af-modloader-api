@@ -1,6 +1,7 @@
 -- My Mod: a starting point. Copy this folder, rename it, and change "id" and "name" in mod.json.
--- It adds one tab to the TAB menu (colored and wrapped text, a text box, buttons, a grid of clickable item tiles
--- and a list) and one console command. See docs/api.md in af-modloader-api for everything the API offers.
+-- It adds one tab to the TAB menu (colored and wrapped text, a text box, buttons, a clickable item tile in a row,
+-- a grid of clickable item tiles and a list) and one console command. See docs/api.md in af-modloader-api for
+-- everything the API offers.
 
 local api = AF.require("af-modloader-api").use(AF)
 
