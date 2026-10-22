@@ -624,12 +624,9 @@ function Tabs:install()
         if isValid(panel) and isValid(group) then
           local s = structure(panel)
           if s and addressOf(s.group) == addressOf(group) then
-            local healthy = self:ensure(panel, "group PreConstruct")
-            -- A rebuild makes every button visible again: if paging was applied, apply the window again.
-            local state = self.state
-            if state and state.bar and state.bar.touched then
-              self:updateBar(panel, healthy)
-            end
+            -- The tab bar is never changed from here: doing it inside the group's PreConstruct crashed the game
+            -- (1.1.5024, 2026-10-22). BP_OnActivated follows every open and applies the window there.
+            self:ensure(panel, "group PreConstruct")
           end
         end
       end,
