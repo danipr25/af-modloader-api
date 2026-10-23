@@ -1,0 +1,34 @@
+name: Source branch
+
+# Everything reaches main from development, by pull request from this repository. The job is required by the main
+# ruleset. It always runs and passes for pull requests into other branches, so the required check is never left
+# pending.
+on:
+  pull_request:
+    # edited: a pull request whose base branch changes must run again.
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  source-branch:
+    name: source-branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Only development goes into main
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          THIS_REPO: ${{ github.repository }}
+        run: |
+          if [ "$BASE_REF" != "main" ]; then
+            echo "Not a pull request into main: nothing to check."
+            exit 0
+          fi
+          if [ "$HEAD_REF" != "development" ] || [ "$HEAD_REPO" != "$THIS_REPO" ]; then
+            echo "::error::Pull requests into main must come from the development branch of $THIS_REPO (this one comes from $HEAD_REPO:$HEAD_REF)."
+            exit 1
+          fi
+          echo "development of $THIS_REPO into main: ok."
