@@ -2,9 +2,7 @@
 
 All notable changes to AF Mod Loader API. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). While the version is 0.x, a patch version fixes things or adds functions without breaking mods, and a minor version may break them and says how here.
 
-## [Unreleased]
-
-Version 0.1.1.
+## [0.1.1] - 2026-10-23
 
 - `page:columns(widths)`: split the rest of a page into side-by-side panes with relative widths. A pane has the same text, input, row, list, grid and space as the page.
 - `pane:clear()`: rebuild one pane without rebuilding the page, also from a click inside that pane.
