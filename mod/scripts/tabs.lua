@@ -54,8 +54,8 @@ local TAB_MENU = {
   canSelect = false,
 }
 -- Verified in a probe (docs/catalog-menu.md): the class, the members, the offset. CurrentActivePage as the
--- highlighted tab is used by the probe and not fully verified. The padding values are a first guess: the in-game
--- test checks them.
+-- highlighted tab is used by the probe and not fully verified. The padding values were picked by eye in game
+-- (2026-10-23, game 1.1.5024): the first line clears the frame's top-left ornament.
 local CATALOG_MENU = {
   id = "catalog",
   label = "V menu",
@@ -68,7 +68,7 @@ local CATALOG_MENU = {
   highlightIndex = function(panel)
     return panel.CurrentActivePage
   end,
-  pagePadding = { Left = 24.0, Top = 20.0, Right = 24.0, Bottom = 16.0 },
+  pagePadding = { Left = 40.0, Top = 36.0, Right = 24.0, Bottom = 16.0 },
   tagSwitchEvent = "BndEvt__WBP_CatalogPanel_WBP_TagSwitcherGroup_K2Node_ComponentBoundEvent_0_"
     .. "OnTagSwitch__DelegateSignature",
   paging = false,

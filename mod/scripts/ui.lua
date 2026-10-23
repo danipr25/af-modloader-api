@@ -17,21 +17,39 @@ local CLASS = {
   scale = "/Script/UMG.ScaleBox",
   overlay = "/Script/UMG.Overlay",
   image = "/Script/UMG.Image",
+  sizeBox = "/Script/UMG.SizeBox",
+  divider = "/Game/Blueprints/WBP/CatalogPanel/WBP_EntryDivider.WBP_EntryDivider_C",
   library = "/Script/UMG.Default__WidgetBlueprintLibrary",
 }
 ui.CLASS = CLASS
 ui.FILL = 1 -- ESlateSizeRule::Fill
 ui.ARROW_TEXTURE = "/Game/Arts/UI/Interaction/T_UI_RightArrow.T_UI_RightArrow"
+-- Class templates the game's own widgets were styled in. Their styles are copied onto ours (never built from a Lua
+-- table: a table passed as a font struct crashed the game, see docs/widgets.md).
+ui.SCROLL_CLASS = "/Game/Blueprints/WBP/CatalogPanel/WBP_CatalogContent.WBP_CatalogContent_C"
+ui.SEARCH_CLASS = "/Game/Blueprints/WBP/BuildOptionsPanel/WBP_BuildPanelNew.WBP_BuildPanelNew_C"
+ui.SCROLL_TEMPLATE = "/Game/Blueprints/WBP/CatalogPanel/WBP_CatalogContent.WBP_CatalogContent_C:WidgetTree.ScrollBox_40"
+ui.SEARCH_TEMPLATE =
+  "/Game/Blueprints/WBP/BuildOptionsPanel/WBP_BuildPanelNew.WBP_BuildPanelNew_C:WidgetTree.Edit_BlueprintSearch"
+-- The color of the solid lines: the game's divider art is sRGB #7A6C5F, used as is (verified in game, 2026-10-23).
+ui.LINE = { R = 0.478, G = 0.424, B = 0.373, A = 1.0 }
 ui.GOLD = { R = 1.0, G = 0.75, B = 0.2, A = 1.0 }
 ui.GREY = { R = 0.45, G = 0.42, B = 0.38, A = 1.0 }
-local GOLD, GREY = ui.GOLD, ui.GREY
+local GOLD, GREY, LINE = ui.GOLD, ui.GREY, ui.LINE
 
 -- Slot alignments, EStretch::UserSpecified, ESlateVisibility::HitTestInvisible (verified in game, 2026-10-22).
 local H_LEFT, H_CENTER, V_CENTER = 1, 2, 2
+local H_FILL, V_FILL, COLLAPSED = 0, 0, 1
 local USER_SPECIFIED, HIT_TEST_INVISIBLE = 7, 3
--- Small widgets are drawn inside a ScaleBox: the text at 0.7, the buttons at 0.6. The arrow image is larger than
--- the button's art seems to need, because the scale shrinks it too (64 is a guess: the in-game test checks it).
-local SMALL_TEXT_SCALE, SMALL_BUTTON_SCALE, ARROW_IMAGE_SIZE = 0.7, 0.6, 64.0
+-- Small widgets are drawn inside a ScaleBox: the text and the buttons at 0.7, the arrows at 0.6. The arrow image is
+-- larger than the button's art seems to need, because the scale shrinks it too (64 is a guess: the in-game test
+-- checks it).
+local SMALL_TEXT_SCALE, SMALL_BUTTON_SCALE, ARROW_SCALE, ARROW_IMAGE_SIZE = 0.7, 0.7, 0.6, 64.0
+-- A small button's label gets this much room on each side (10 was picked in a probe on 2026-10-23; 16 after
+-- the API test showed "Show advanced" filling its button).
+local SMALL_BUTTON_PADDING = 16.0
+-- Solid lines: their thickness and the room on each side of a vertical one (verified in game, 2026-10-23).
+local LINE_THICKNESS, LINE_SPACE = 2.0, 16.0
 -- Layout: the gap between the panes of page:columns (a guess, the in-game test checks it) and the largest space a
 -- mod can ask for.
 local COLUMN_GAP, MAX_SPACE = 24.0, 400
@@ -100,6 +118,15 @@ function ui.findTexture(path, log)
   end
 end
 
+-- Style problems are logged once per Lua state (not per page), so rebuilding a page never repeats them.
+local styleWarned = {}
+
+-- Forgets what was logged once (findClass notes and style problems). For tests.
+function ui.resetNotes()
+  classNotes = {}
+  styleWarned = {}
+end
+
 -- Creates a widget of a UMG class (verified for VerticalBox, TextBlock, EditableTextBox, ScrollBox and WrapBox).
 function ui.construct(classPath, outer)
   local class = StaticFindObject(classPath)
@@ -144,6 +171,23 @@ local function scaleBox(tree, scale)
   local box = ui.construct(CLASS.scale, tree)
   box:SetStretch(USER_SPECIFIED)
   box:SetUserSpecifiedScale(scale)
+  return box
+end
+
+-- A solid line: an Image with no texture (draws white), tinted, inside a SizeBox that fixes its thickness. The
+-- Image's own SetDesiredSizeOverride was ignored in game, so the SizeBox is required. vertical fixes the width, else
+-- the height.
+local function solidLine(tree, vertical)
+  local image = ui.construct(CLASS.image, tree)
+  image:SetColorAndOpacity(LINE)
+  image:SetVisibility(HIT_TEST_INVISIBLE)
+  local box = ui.construct(CLASS.sizeBox, tree)
+  if vertical then
+    box:SetWidthOverride(LINE_THICKNESS)
+  else
+    box:SetHeightOverride(LINE_THICKNESS)
+  end
+  box:AddChild(image)
   return box
 end
 
@@ -230,6 +274,47 @@ function ui.newPage(ctx)
         string.format(
           "mod %s: a row child could not be centered, it sits at the top of its row: %s",
           ctx.owner,
+          tostring(problem)
+        )
+      )
+    end
+  end
+
+  -- Logs a problem once per page and key.
+  local warnedKeys = {}
+  local function warnOnce(key, text)
+    if not warnedKeys[key] then
+      warnedKeys[key] = true
+      ctx.log(string.format("mod %s: %s", ctx.owner, text))
+    end
+  end
+
+  local function styleNote(key, text)
+    if not styleWarned[key] then
+      styleWarned[key] = true
+      ctx.log(string.format("mod %s: %s", ctx.owner, text))
+    end
+  end
+
+  -- Copies a style from a template widget of the game onto our widget, in a pcall. It must run BEFORE the widget is
+  -- added to its parent: after that only part of it applies (verified in game, 2026-10-23). apply(template) does the
+  -- copy. The template lives in a widget class that may not be loaded yet, so the class is loaded first (as for the
+  -- buttons). If the template is missing or the copy fails, the engine default stays and one line is logged per Lua
+  -- state.
+  local function copyStyle(classPath, path, what, apply)
+    ui.findClass(classPath, ctx.log)
+    local template = StaticFindObject(path)
+    if not isValid(template) then
+      styleNote(what, string.format("the game's %s style was not found (%s), the engine default is used", what, path))
+      return
+    end
+    local ok, problem = pcall(apply, template)
+    if not ok then
+      styleNote(
+        what,
+        string.format(
+          "the game's %s style could not be copied, the engine default is used: %s",
+          what,
           tostring(problem)
         )
       )
@@ -394,7 +479,7 @@ function ui.newPage(ctx)
     return button
   end
 
-  -- small: the button is drawn inside a ScaleBox at 0.6.
+  -- small: the button is drawn inside a ScaleBox at 0.7, with 10 of room at each side of the label.
   local function makeButton(hbox, label, onClick, extraCheck, small, tag)
     if type(label) ~= "string" or label == "" then
       error('row:button needs the label as text, like "Next"', 3)
@@ -404,6 +489,20 @@ function ui.newPage(ctx)
     end
     local button = createButton(label)
     if small then
+      local okPadding, paddingProblem = pcall(function()
+        button.ContentBorder:SetPadding({
+          Left = SMALL_BUTTON_PADDING,
+          Top = 0.0,
+          Right = SMALL_BUTTON_PADDING,
+          Bottom = 0.0,
+        })
+      end)
+      if not okPadding then
+        warnOnce(
+          "small button padding",
+          "a small button's padding could not be set, its label may look cramped: " .. tostring(paddingProblem)
+        )
+      end
       local box = scaleBox(ctx.tree, SMALL_BUTTON_SCALE)
       box:AddChild(button)
       centerSlot(hbox:AddChildToHorizontalBox(box))
@@ -482,7 +581,7 @@ function ui.newPage(ctx)
       }
     end
     local button = createButton("")
-    local box = scaleBox(ctx.tree, SMALL_BUTTON_SCALE)
+    local box = scaleBox(ctx.tree, ARROW_SCALE)
     local overlay = ui.construct(CLASS.overlay, ctx.tree)
     overlay:AddChildToOverlay(button)
     local image = ui.construct(CLASS.image, ctx.tree)
@@ -636,8 +735,31 @@ function ui.newPage(ctx)
         hbox:AddChildToHorizontalBox(spacer)
       end, width, 0)
     end
+    -- A vertical line between two things of the row, with 16 of room on each side. It spans the row's height.
+    function row.divider()
+      if not rowLive() then
+        return
+      end
+      local function gap()
+        addSpacer(function(spacer)
+          hbox:AddChildToHorizontalBox(spacer)
+        end, LINE_SPACE, 0)
+      end
+      gap()
+      local slot = hbox:AddChildToHorizontalBox(solidLine(ctx.tree, true))
+      local ok, problem = pcall(function()
+        slot:SetVerticalAlignment(V_FILL)
+      end)
+      if not ok then
+        warnOnce(
+          "row divider fill",
+          "a row divider could not fill the row's height, it may be short: " .. tostring(problem)
+        )
+      end
+      gap()
+    end
     if withButtons then
-      -- opts (optional): { small = true } shows a smaller button (a ScaleBox at 0.6).
+      -- opts (optional): { small = true } shows a smaller button (a ScaleBox at 0.7).
       function row.button(_, label, onClick, opts)
         if not rowLive() then
           return inertButton()
@@ -665,11 +787,13 @@ function ui.newPage(ctx)
     text = inertText,
     item = function() end,
     space = function() end,
+    divider = function() end,
   }
   local inertPageRow = {
     text = inertText,
     item = inertRow.item,
     space = inertRow.space,
+    divider = inertRow.divider,
     button = inertButton,
     arrow = inertArrow,
   }
@@ -705,6 +829,7 @@ function ui.newPage(ctx)
       list = inertList,
       grid = inertGrid,
       space = function() end,
+      divider = function() end,
       clear = function() end,
     }
   end
@@ -725,6 +850,42 @@ function ui.newPage(ctx)
       )
     end
     return false
+  end
+
+  -- The game's scrollbar (frame and thumb): copied from a ScrollBox of the item sheet before the new one is added.
+  local function applyScrollStyle(scroll)
+    copyStyle(ui.SCROLL_CLASS, ui.SCROLL_TEMPLATE, "scrollbar", function(template)
+      scroll.WidgetBarStyle = template.WidgetBarStyle
+      scroll.ScrollbarThickness = template.ScrollbarThickness
+    end)
+  end
+
+  -- The game's EntryDivider widget, made like the buttons. With a heading, ShowText is set BEFORE the widget is added
+  -- (setting its inner text was overwritten by the blueprint). Without, its text is collapsed. Returns the widget, or
+  -- nil and the reason.
+  local function gameDivider(heading)
+    local library = StaticFindObject(CLASS.library)
+    local class = ui.findClass(CLASS.divider, ctx.log)
+    if not isValid(library) or not class then
+      return nil, "the divider class of the game was not found"
+    end
+    local ok, result = pcall(function()
+      local divider = library:Create(ctx.panel, class, ui.playerController())
+      if not isValid(divider) then
+        error("the game did not create a divider")
+      end
+      if heading then
+        divider.ShowText = FText(heading)
+        divider.Txt_BuildOptionType:SetText(FText(heading)) -- both were set in the verified probe
+      else
+        divider.Txt_BuildOptionType:SetVisibility(COLLAPSED)
+      end
+      return divider
+    end)
+    if ok then
+      return result
+    end
+    return nil, result
   end
 
   -- The functions that put things in a vertical box: text, input, row, list, grid and space. The page uses them on
@@ -771,6 +932,9 @@ function ui.newPage(ctx)
         error(kind .. ":input takes an optional table { hint = text, onChange = function(text) end }", 2)
       end
       local box = ui.construct(CLASS.edit, ctx.tree)
+      copyStyle(ui.SEARCH_CLASS, ui.SEARCH_TEMPLATE, "search box", function(template)
+        box.WidgetStyle = template.WidgetStyle
+      end)
       if spec.hint then
         local ok = pcall(function() -- unverified: SetHintText
           box:SetHintText(FText(tostring(spec.hint)))
@@ -847,12 +1011,40 @@ function ui.newPage(ctx)
       end, 0, height)
     end
 
+    -- A horizontal divider, with the heading in it when there is one. The game's own divider (the one the V menu uses
+    -- between categories); if the game does not give one, a solid line without the heading.
+    function c.divider(_, heading)
+      if not pageAlive() then
+        return
+      end
+      if heading ~= nil and (type(heading) ~= "string" or heading == "") then
+        error(string.format('%s:divider takes an optional heading as text, like %s:divider("Cauldron")', kind, kind), 2)
+      end
+      local widget, problem = gameDivider(heading)
+      if widget then
+        root:AddChildToVerticalBox(widget)
+        return
+      end
+      warnOnce(
+        "divider",
+        "the game's divider could not be made, dividers are plain lines without a heading: " .. tostring(problem)
+      )
+      local slot = root:AddChildToVerticalBox(solidLine(ctx.tree, false))
+      local ok, slotProblem = pcall(function()
+        slot:SetHorizontalAlignment(H_FILL)
+      end)
+      if not ok then
+        warnOnce("line fill", "a divider could not fill the width, it may be short: " .. tostring(slotProblem))
+      end
+    end
+
     -- A scrolling list of rows (ScrollBox, HorizontalBox rows and the Fill slot are verified in game).
     function c.list()
       if not pageAlive() then
         return inertList()
       end
       local scroll = ui.construct(CLASS.scroll, ctx.tree)
+      applyScrollStyle(scroll)
       local slot = root:AddChildToVerticalBox(scroll)
       fillSlot(slot, "list")
       local generation = 0
@@ -889,6 +1081,7 @@ function ui.newPage(ctx)
         return inertGrid()
       end
       local scroll = ui.construct(CLASS.scroll, ctx.tree)
+      applyScrollStyle(scroll)
       local slot = root:AddChildToVerticalBox(scroll)
       fillSlot(slot, "grid")
       local wrap = ui.construct(CLASS.wrap, ctx.tree)
@@ -962,7 +1155,7 @@ function ui.newPage(ctx)
   -- two thirds. Returns one pane per entry. A pane has text, input, row, list, grid and space like the page, and
   -- clear(), which removes only what that pane holds. HorizontalBox slot SetSize and SetPadding are unverified: a
   -- refusal is logged once and the panes share the width equally, without a gap.
-  function page.columns(_, widths)
+  function page.columns(_, widths, opts)
     local usage = "page:columns needs an array of 2 or more widths above 0, like page:columns({ 1, 2 })"
     if type(widths) ~= "table" or #widths < 2 then
       error(usage, 2)
@@ -972,6 +1165,19 @@ function ui.newPage(ctx)
       if type(w) ~= "number" or w ~= w or w <= 0 or w == math.huge then
         error(string.format("%s (entry %d is %s)", usage, i, tostring(w)), 2)
       end
+    end
+    local divider = false
+    if opts ~= nil then
+      local bad = type(opts) ~= "table" or (opts.divider ~= nil and type(opts.divider) ~= "boolean")
+      if not bad then
+        for key in pairs(opts) do
+          bad = bad or key ~= "divider"
+        end
+      end
+      if bad then
+        error("page:columns takes an optional second argument { divider = true or false }", 2)
+      end
+      divider = opts.divider == true
     end
     if not pageAlive() then
       local panes = {}
@@ -984,13 +1190,29 @@ function ui.newPage(ctx)
     fillSlot(ctx.root:AddChildToVerticalBox(hbox), "columns")
     local slotWarned = false
     local panes = {}
+    -- With a divider the gap is split around the line: half before it, half after.
+    local gap = divider and COLUMN_GAP / 2 or COLUMN_GAP
     for i = 1, #widths do
+      if divider and i > 1 then
+        -- Auto-sized (the slot default), the full height of the columns, with half the gap before the line.
+        local lineSlot = hbox:AddChildToHorizontalBox(solidLine(ctx.tree, true))
+        local okLine, lineProblem = pcall(function()
+          lineSlot:SetVerticalAlignment(V_FILL)
+          lineSlot:SetPadding({ Left = gap, Top = 0.0, Right = 0.0, Bottom = 0.0 })
+        end)
+        if not okLine then
+          warnOnce(
+            "columns divider",
+            "the column divider could not be placed (unverified call): " .. tostring(lineProblem)
+          )
+        end
+      end
       local vbox = ui.construct(CLASS.vbox, ctx.tree)
       local slot = hbox:AddChildToHorizontalBox(vbox)
       local ok, problem = pcall(function()
         slot:SetSize({ Value = widths[i] + 0.0, SizeRule = ui.FILL })
         if i > 1 then
-          slot:SetPadding({ Left = COLUMN_GAP, Top = 0.0, Right = 0.0, Bottom = 0.0 })
+          slot:SetPadding({ Left = gap, Top = 0.0, Right = 0.0, Bottom = 0.0 })
         end
       end)
       if not ok and not slotWarned then

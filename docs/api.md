@@ -1,6 +1,6 @@
 # API reference
 
-AF Mod Loader API 0.1.1 for mod authors. Game 1.1.5024, UE4SS 1181, AF Mod Loader 0.1.0.
+AF Mod Loader API 0.1.2 for mod authors. Game 1.1.5024, UE4SS 1181, AF Mod Loader 0.1.0.
 
 Each function says what is **verified in game** and what is **not verified yet**. Nothing marked "not verified" has run in the game: it is written from the UE4SS and Unreal Engine documentation, wrapped so that a failure is logged instead of crashing, and waits for the in-game test. Verified findings are recorded in [tab-menu.md](tab-menu.md), [catalog-menu.md](catalog-menu.md) and [console.md](console.md).
 
@@ -16,7 +16,7 @@ The API is 0.x until 1.0. A patch version (0.1.1) fixes things or adds functions
 
 `api.version` is the installed version as text, like `"0.1.0"`.
 
-Raise the lower bound to the first version that has every call your mod uses. Every call in this reference is in 0.1.0, so `>=0.1.0 <0.2.0` is enough, except the ones that say "added in 0.1.1" (`page:columns`, `pane:clear`, and the `space` functions): a mod that uses one needs `>=0.1.1 <0.2.0`. Later patch versions will say which version added what. Development builds before the first public release were numbered 0.1.1 to 0.1.7; 0.1.0 is the first public release, and the in-game verification records below that name those build numbers stay as they were written.
+Raise the lower bound to the first version that has every call your mod uses. Every call in this reference is in 0.1.0, so `>=0.1.0 <0.2.0` is enough, except the ones that say "added in 0.1.1" (`page:columns`, `pane:clear`, and the `space` functions): a mod that uses one needs `>=0.1.1 <0.2.0`. The ones that say "added in 0.1.2" (the `divider` functions and the options of `page:columns`) need `>=0.1.2 <0.2.0`. Later patch versions will say which version added what. Development builds before the first public release were numbered 0.1.1 to 0.1.7; 0.1.0 is the first public release, and the in-game verification records below that name those build numbers stay as they were written.
 
 ### Threads
 
@@ -73,7 +73,7 @@ local tab = api.tabs.add({
 
 `menu` must be nil, `"tab"` or `"catalog"`, anything else is an error. The page widgets and the handle rules are the same in both menus. The tab id is unique within your mod across both menus.
 
-**The V menu**: the tab is added after Materials, Goods, Stats and Ledger. Its pages are padded so the text does not sit on the panel's frame. There is no paging of the V menu's bar: with five tabs it fits, more are not handled. The panel class is not loaded when the game starts, so the API hooks the V menu when its class appears (see [catalog-menu.md](catalog-menu.md)); if that timing fails, the tab appears the next time the V menu opens. Status of the V menu's tabs: the mechanism (a title in `TitleList`, `PreConstruct`, a page in `SW_Main`) with one extra tab is **verified in game in a probe** (2026-10-22, game 1.1.5024); the API's own implementation, the padding values, the highlighted tab after a rebuild (read from `CurrentActivePage`), the lazy hook registration are **not verified**. Two added tabs in this menu (Cauldron Recipes and a probe) are **verified in game** (2026-10-23, game 1.1.5024, API 0.1.1): each opens its own page.
+**The V menu**: the tab is added after Materials, Goods, Stats and Ledger. Its pages are padded (left 40, top 36, right 24, bottom 16) so the text does not sit on the panel's frame or its corner ornament. There is no paging of the V menu's bar: with five tabs it fits, more are not handled. The panel class is not loaded when the game starts, so the API hooks the V menu when its class appears (see [catalog-menu.md](catalog-menu.md)); if that timing fails, the tab appears the next time the V menu opens. Status of the V menu's tabs: the mechanism (a title in `TitleList`, `PreConstruct`, a page in `SW_Main`) with one extra tab is **verified in game in a probe** (2026-10-22, game 1.1.5024); the API's own implementation, the highlighted tab after a rebuild (read from `CurrentActivePage`), the lazy hook registration are **not verified**. The padding values were picked by eye in a probe (2026-10-23, game 1.1.5024, API 0.1.1: with top 20 the first line sat under the frame's top-left ornament; top 36 and left 40 were chosen); the same values through the API 0.1.2 are **verified in game** (2026-10-23, game 1.1.5024, API 0.1.2 test build): the first line clears the frame's corner ornament. Two added tabs in this menu (Cauldron Recipes and a probe) are **verified in game** (2026-10-23, game 1.1.5024, API 0.1.1): each opens its own page.
 
 Tabs appear after the game's own, in the order mods registered them (which follows the loader's load order). A duplicate id or title is refused with a log line naming both mods; you get a tab that does nothing so your mod keeps running. Invalid arguments raise an error.
 
@@ -130,7 +130,7 @@ api.catalog.section({
 
 After every time the game shows an item (`UpdateContent`), the API clears your section on that sheet and runs `build` again for the new item. Materials and Goods are different sheets and each gets the section. A `build` that writes nothing leaves the section empty (it takes no room), which is how a mod shows nothing for an item it has nothing to say about. The section sits under "Used in Crafting", above the records, and is one box per mod.
 
-`section` is a restricted page: `section:text(str, opts)` (the same `opts` and handle as `page:text`: `wrap` and `size`), `section:space(height)` (added in 0.1.1: empty vertical space, the same as `page:space`) and `section:row()` with `row:text` and `row:button` only (no items, arrows, inputs, lists or grids, and no `row:space`). Handles are valid until the next build of the section, which is the next item shown on that sheet: keep none across items. An error in `build` is logged with the mod id and the item, once with the stack trace and then in short, and the section stays empty. Clicks on section buttons work while the sheet is shown. A duplicate id is refused with a log line and `false`; invalid arguments raise an error.
+`section` is a restricted page: `section:text(str, opts)` (the same `opts` and handle as `page:text`: `wrap` and `size`), `section:space(height)` (added in 0.1.1: empty vertical space, the same as `page:space`), `section:divider(heading)` (added in 0.1.2: the same as `page:divider`) and `section:row()` with `row:text` and `row:button` only (no items, arrows, inputs, lists or grids, and no `row:space`). Handles are valid until the next build of the section, which is the next item shown on that sheet: keep none across items. An error in `build` is logged with the mod id and the item, once with the stack trace and then in short, and the section stays empty. Clicks on section buttons work while the sheet is shown. A duplicate id is refused with a log line and `false`; invalid arguments raise an error.
 
 Items shown before the API's hook exists have no section: the hook is registered when the V menu panel is first seen, and the first `UpdateContent` after that builds it.
 
@@ -156,7 +156,7 @@ page:text("A long explanation that should stay inside the panel.", { wrap = true
 page:text("Normal cauldron, 2752 recipes", { size = "small" })
 ```
 
-Status: the text (a `TextBlock`) is **verified in game**. `color` (`SetColorAndOpacity`) and `wrap` (`SetAutoWrapText(true)`) are **verified in game** (2026-10-21, game 1.1.5023): first in a probe on texts already shown, then with API 0.1.3 and the template, set at build time (a gold page heading, a grey row text, a long page line that wraps at the panel's edge). Color on list texts is not verified (same widget class). Small text: a `TextBlock` inside a `ScaleBox` at 0.7 is **verified in game** in a probe (2026-10-22, game 1.1.5024, see [widgets.md](widgets.md)); left-aligning its slot on a page (`SetHorizontalAlignment` on the vertical box slot) and the `size` option through the API are **verified in game** too (2026-10-22, game 1.1.5024, API 0.1.5 and 0.1.6): a small text shows smaller and starts at the left edge of a page.
+Status: the text (a `TextBlock`) is **verified in game**. `color` (`SetColorAndOpacity`) and `wrap` (`SetAutoWrapText(true)`) are **verified in game** (2026-10-21, game 1.1.5023): first in a probe on texts already shown, then with API 0.1.3 and the template, set at build time (a gold page heading, a grey row text, a long page line that wraps at the panel's edge). Color on list-row texts is **verified in game** too (2026-10-23, game 1.1.5024, API 0.1.2, through Cauldron Recipes: the dark text color on list-row texts). Small text: a `TextBlock` inside a `ScaleBox` at 0.7 is **verified in game** in a probe (2026-10-22, game 1.1.5024, see [widgets.md](widgets.md)); left-aligning its slot on a page (`SetHorizontalAlignment` on the vertical box slot) and the `size` option through the API are **verified in game** too (2026-10-22, game 1.1.5024, API 0.1.5 and 0.1.6): a small text shows smaller and starts at the left edge of a page.
 
 ### `page:input(spec)` returns `input`
 
@@ -171,9 +171,11 @@ local box = page:input({
 })
 ```
 
+The box uses the game's own search box look (added in 0.1.2): the API copies the `WidgetStyle` of `Edit_BlueprintSearch` in the build panel (`/Game/Blueprints/WBP/BuildOptionsPanel/WBP_BuildPanelNew`, the API loads that class first if it is not loaded yet, like the buttons) onto the new box before it is added to its parent. If the class or template cannot be found or the copy fails, the engine's default box is used and one line is logged (once, not on every rebuild). The style is only ever copied from the game's widget, never built from a Lua table (that crashed the game for fonts, see [widgets.md](widgets.md)).
+
 How `onChange` works: while the TAB menu is open, the API reads each such box about every 150 ms and calls `onChange` once for each change, so it may arrive up to 150 ms late and intermediate texts can be skipped.
 
-Status: the box, typing in it, `onChange` and the polling (with `LoopInGameThreadWithDelay`) are **verified in game** (2026-10-21). `hint` and `get` are **not verified**. If `onChange` does not work in game, it is removed before 0.1.0 is released and mods use a search button instead.
+Status: the box, typing in it, `onChange` and the polling (with `LoopInGameThreadWithDelay`) are **verified in game** (2026-10-21). `hint` and `get` were verified later with the game style (see below). The style copy was verified in a probe (2026-10-23, game 1.1.5024, UE4SS experimental): the box shows the game's brown rounded look with a dark hint text and the game did not crash. Through the API 0.1.2 (2026-10-23, game 1.1.5024, API 0.1.2 test build) the hint, `set("abc")` then `get()` returning "abc", `onChange` once per typed change and `set("")` from a button are **verified in game** with that style. If `onChange` does not work in game, it is removed before 0.1.0 is released and mods use a search button instead.
 
 ### `page:row()` returns `row`
 
@@ -181,7 +183,7 @@ Adds a horizontal row on the page itself: things placed side by side.
 
 - `row:text(str)` adds text and returns a text handle (`:set`).
 - `row:item(itemName, count, opts)` adds the game's item tile, like in a list row. `opts` is optional and only for rows of a page: `{ onClick = function(itemName) end }` makes the tile clickable. A clickable tile is the game's `WBP_RecipeItemTile_C`, the one `grid:tile` makes, so it shows no count: `count` must be nil or 1, otherwise it is an error. A click with any mouse button calls `onClick(itemName)`, like on a grid tile. `opts` must be nil or a table whose `onClick` is a function, otherwise it is an error. A list row (`list:row()`) has no clickable tiles and rejects `opts` with an error. Unknown keys in `opts` are ignored. After a click that rebuilds the row, a second quick click hits whatever tile is now in that place: in game, a fast double click on one of two clickable tiles whose click rebuilds the row did not trigger the second tile (the interval is short), so there was one effect (2026-10-22, game 1.1.5024, API 0.1.5 and 0.1.6).
-- `row:button(label, onClick, opts)` adds the game's button with `label` as its text and returns a button handle. `onClick()` is called when the player clicks it. `button:set(label)` changes the label. `button:enable(on)` enables (`true`) or disables (`false`) it: a disabled button is grey and ignores clicks. `on` must be a boolean, otherwise it is an error, also on a handle whose page was rebuilt; only a handle made on a page that was already gone does nothing and checks nothing. Buttons start enabled; call `enable(false)` right after adding the button to its row, and keep the handle to enable it again later. `opts` is optional: `{ small = true }` draws a smaller button (the game's button inside a `ScaleBox` at 0.6, same handle and clicks). `opts` must be nil or a table whose `small` is a boolean, otherwise it is an error.
+- `row:button(label, onClick, opts)` adds the game's button with `label` as its text and returns a button handle. `onClick()` is called when the player clicks it. `button:set(label)` changes the label. `button:enable(on)` enables (`true`) or disables (`false`) it: a disabled button is grey and ignores clicks. `on` must be a boolean, otherwise it is an error, also on a handle whose page was rebuilt; only a handle made on a page that was already gone does nothing and checks nothing. Buttons start enabled; call `enable(false)` right after adding the button to its row, and keep the handle to enable it again later. `opts` is optional: `{ small = true }` draws a smaller button (the game's button inside a `ScaleBox` at 0.7, with 16 of room at each side of its label, same handle and clicks; 0.6 and no extra room before 0.1.2). `opts` must be nil or a table whose `small` is a boolean, otherwise it is an error.
 - `row:arrow(direction, onClick)` adds a small arrow button, `direction` being `"previous"` (points left) or `"next"` (points right), anything else is an error. It is the game's button inside a `ScaleBox` at 0.6 with the game's gold arrow picture on top. The handle has only `enable(on)`: like `button:enable`, but the arrow is also grey when disabled and gold when enabled. If the picture cannot be found, the arrow is a small button labelled `<` or `>` and one line is logged.
 
 Rows center their contents vertically: a text, an item tile, a button and an arrow in the same row share a middle line. This applies to page rows and list rows.
@@ -215,7 +217,22 @@ recipe:space(32) -- a gap before the next recipe in the same row
 recipe:item("Coal", 1)
 ```
 
+- `row:divider()` (added in 0.1.2) adds a vertical line between two things of the row, with 16 of room on each side. The line is 2 thick, spans the height of the row and has the color of the game's dividers. It works in page rows, pane rows and list rows (not in section rows). Takes no arguments.
+
+```lua
+local recipe = list:row()
+recipe:item("Wood", 1)
+recipe:text(" + ")
+recipe:item("Stone", 1)
+recipe:divider() -- a line instead of a gap between two recipes
+recipe:item("Coal", 1)
+```
+
+Status of `row:divider()`: the widget (an `Image` with no texture, tinted with `SetColorAndOpacity` with the sRGB value of the game's divider art as is, `SetVisibility(3)`, inside a `SizeBox` with `SetWidthOverride(2.0)`, in a slot with vertical alignment Fill and two `Spacer` of 16) was **verified in a probe** (2026-10-23, game 1.1.5024, UE4SS experimental): it spans the row and reads as a subtle light line; three Advanced recipes per row fit in the two-thirds pane with lines between them. In the probe `SetDesiredSizeOverride` on the `Image` was ignored (lines about 40 thick), which is why the `SizeBox` is used. The API's own `row:divider()` is **verified in game** (2026-10-23, game 1.1.5024, API 0.1.2 test build) in list rows and pane rows, and three Advanced groups per row fit in the two-thirds pane with the page padding of 40.
+
 Buttons live in rows made with `page:row()`. List rows (`list:row()`) have no buttons. About three buttons fit in a row: a fourth runs past the panel.
+
+Small buttons in 0.1.2: scale 0.7 and `button.ContentBorder:SetPadding` left and right 16. A probe (2026-10-23, game 1.1.5024) picked 0.7 with 10 by eye; the API test then showed a long label ("Show advanced") filling its button, so the padding went up to 16, which looked right in game (2026-10-23, game 1.1.5024, API 0.1.2 test build). Arrows stay at 0.6.
 
 Status: `HorizontalBox` and the button (`WBP_ButtonBase_C` created with `Create`, label with `SetButtonText`) are **verified in game** in a spike (2026-10-21, see [widgets.md](widgets.md)). The API's own `row:button`, with a click that calls `tab:refresh()`, is **verified in game** too (2026-10-21, dev build 0.1.1): one effect per click, also after many fast clicks. `enable` (`SetIsEnabled`) is **verified in game** in a probe (2026-10-21): the button turns grey and clicks do nothing. Also verified with API 0.1.3 and the template (2026-10-21): a button disabled at build time is grey and ignores clicks, stays grey after closing and reopening the TAB menu, and works again after another button calls `enable(true)`. The click router also skips a button its handle marked disabled, as a second guard. **Verified in game through the API** (2026-10-22, game 1.1.5024, API 0.1.5 and 0.1.6): a clickable `row:item` (a `WBP_RecipeItemTile_C` inside the `HorizontalBox`) shows correctly in a page row next to buttons and small text, and its click routes, also with a right click (any mouse button); the centering of row children (text, tiles, buttons and arrows share a middle line); `{ small = true }` buttons, which show smaller and click; and `row:arrow`: the gold arrow picture at size 64 (before scaling) looks right, it is grey when disabled, and clicks step pages. The probe before it verified a `ScaleBox` at 0.6 around the game's button and the arrow overlay. **Not verified**: the `<` and `>` fallback when the arrow texture is missing. Row text, button and arrow slots that the game refuses to center are logged once.
 
@@ -232,6 +249,8 @@ for _, name in ipairs({ "GentianNectar", "Wood" }) do
   grid:tile(name, { onClick = function(clicked) heading:set("You clicked " .. clicked) end })
 end
 ```
+
+Its scrollbar is the game's (added in 0.1.2): see [Scrollbar](#scrollbar-of-grid-and-list).
 
 A page that holds both a `grid` and a `list` is expected to split the height between them (not verified).
 
@@ -270,6 +289,26 @@ The API does not look up item names or recipes: that is the mod's job.
 
 Status: the item tile (`WBP_SimpleItemTile_C` with `UpdateItemInfo`) is **verified in game** with a count of 1, including its tooltip. The scrolling list, its rows and the fill-the-page setting are **verified in game** too (2026-10-21): 300 rows of item tiles scroll smoothly, building them takes about 80 ms, and clearing and rebuilding the list on every filter change feels instant. How a count other than 1 is shown was not checked.
 
+### Scrollbar of `grid` and `list`
+
+Added in 0.1.2, nothing to call. The scroll boxes of `grid` and `list` (on pages, in panes and in the TAB menu) use the game's scrollbar instead of the engine's white one. The API copies `WidgetBarStyle` and `ScrollbarThickness` from `ScrollBox_40` of the item sheet class (`/Game/Blueprints/WBP/CatalogPanel/WBP_CatalogContent`, the API loads that class first if it is not loaded yet) onto the new `ScrollBox` before it is added to its parent. The order matters: copied after the box was added, only part of the style applied (a thin track without the frame). If the template is not found or the copy fails, the engine's scrollbar stays and one line is logged (once, not on every rebuild).
+
+Status: the copy before adding was verified in a probe (2026-10-23, game 1.1.5024, UE4SS experimental): the game's scrollbar (frame and thumb, thickness 22) and no crash. Through the API 0.1.2 it is **verified in game** (2026-10-23, game 1.1.5024, API 0.1.2 test build) on a list and a grid, also in the Recipes tab (with the TAB menu opened before the V menu). Not verified: the scrollbar on a list or grid in the TAB menu itself.
+
+### `page:divider(heading)`, `pane:divider(heading)` and `section:divider(heading)`
+
+Added in 0.1.2. Adds a horizontal divider under what is already there: the game's own divider, the one the V menu draws between categories (two lines with diamond ends). `heading` is optional text shown in the middle of it, like `"Cauldron"`. Without a heading it is a plain line. Anything else (a number, an empty string...) is an error that points at your call. It returns nothing. On a page handle kept past its page it does nothing and checks nothing.
+
+```lua
+page:divider() -- a plain line
+local left, right = table.unpack(page:columns({ 1, 2 }))
+right:divider("Cauldron") -- a line with a heading
+```
+
+If the game's divider class is not available, a solid horizontal line (2 thick, the full width, the color of the game's dividers) is used instead, without the heading, and one line is logged per page. The heading text is drawn in the game's dark text color, as everything in the game's panels.
+
+Status: the game's divider (`/Game/Blueprints/WBP/CatalogPanel/WBP_EntryDivider.WBP_EntryDivider_C`, made with `WidgetBlueprintLibrary:Create` like the buttons) was **verified in a probe** (2026-10-23, game 1.1.5024, UE4SS experimental) in a pane, with and without a heading: plain it measures 1020 x 16, with a heading 1133 x 44. The heading is set with `divider.ShowText = FText(heading)` and `divider.Txt_BuildOptionType:SetText(FText(heading))` together, before the divider is added (the verified combination); setting only the inner text was overwritten by the blueprint (it showed "Logistics"). A plain divider hides its text with `divider.Txt_BuildOptionType:SetVisibility(1)`. Through the API 0.1.2 (2026-10-23, game 1.1.5024, API 0.1.2 test build) `pane:divider()` (plain, in the narrow pane) and `pane:divider("Cauldron")` (with a heading) are **verified in game**, and so is `section:divider("Cauldron")` on the Goods item sheet. **Not verified**: the solid line fallback (the game's divider class was always available) and `page:divider`.
+
 ### `page:space(height)` and `pane:space(height)`
 
 Added in 0.1.1. Adds empty vertical space of `height` below what is already there. `height` must be a finite number above 0 and up to 400, otherwise it is an error that points at your call (the check runs before anything is built). Item sheet sections have it too: `section:space(height)`.
@@ -282,9 +321,11 @@ page:text("Normal cauldron")
 
 Status: **verified in game** in the V menu (2026-10-23, game 1.1.5024, API 0.1.1, probe): `page:space` and `row:space` (in a page row and in list rows) show gaps. The widget is the game's UMG `Spacer` (`SetSize`). If the game refuses it, one line is written to `UE4SS.log` and the gap is missing; the test log had no such line. A gap of 32 between groups of item tiles does not visually separate them. `section:space` is verified too: the gap shows above the section text on the Goods item sheet and stays when switching items. Not tested in the TAB menu.
 
-### `page:columns(widths)` returns `{ pane, pane, ... }`
+### `page:columns(widths, opts)` returns `{ pane, pane, ... }`
 
-Added in 0.1.1. Splits the rest of the page into panes side by side and returns one pane per entry of `widths`. The widths are relative: `{ 1, 2 }` is a third and two thirds. `widths` must be an array of 2 or more finite numbers above 0 (no upper limit on the count), otherwise it is an error that points at your call, before anything is built. There is a fixed gap of 24 between panes (verified in game to look right in the V menu).
+Added in 0.1.1 (`opts` in 0.1.2). Splits the rest of the page into panes side by side and returns one pane per entry of `widths`. The widths are relative: `{ 1, 2 }` is a third and two thirds. `widths` must be an array of 2 or more finite numbers above 0 (no upper limit on the count), otherwise it is an error that points at your call, before anything is built. There is a fixed gap of 24 between panes (verified in game to look right in the V menu).
+
+`opts` is optional (0.1.2): `{ divider = true }` (as in `page:columns({ 1, 2 }, { divider = true })`) draws a vertical line between the panes, in a slot of its own, the full height of the columns, with the gap split as 12 on each side of it. `opts` must be nil or a table whose `divider` is nil or a boolean, and unknown keys are an error that points at your call (checked before anything is built). Without `opts`, or with `divider = false`, the columns are exactly as before.
 
 ```lua
 local left, right = table.unpack(page:columns({ 1, 2 }))
@@ -300,13 +341,13 @@ items:tile("Wood", {
 })
 ```
 
-A pane has the same `text`, `input`, `row`, `list`, `grid` and `space` as the page, with the same options and handles, plus `clear`. There is no `columns` inside a pane. A `grid` or `list` in a pane fills the rest of that pane and scrolls on its own. A pane's rows have `row:space`.
+A pane has the same `text`, `input`, `row`, `list`, `grid`, `space` and `divider` as the page, with the same options and handles, plus `clear`. There is no `columns` inside a pane. A `grid` or `list` in a pane fills the rest of that pane and scrolls on its own. A pane's rows have `row:space`.
 
 The columns take the rest of the page's height, like a grid or a list. Anything added to the page after `columns` sits below them, at the bottom of the page, and a second widget that also fills (a grid or list on the page) shares the height with them.
 
 On a page handle kept past its page, `columns` still checks `widths` and then returns inert panes: every method does nothing.
 
-Status: **verified in game** in the V menu (2026-10-23, game 1.1.5024, API 0.1.1, probe). `columns({ 1, 2 })` shows two panes at a third and two thirds with the 24 gap; a `grid` in the narrow pane shows 4 tiles per row; the grid and a list scroll independently in their panes; an input in a pane fires `onChange`; clicks route in both panes, also after `tab:refresh()` rebuilt the page; small text in a pane is left-aligned. The log had no "could not" line for the slot calls. Content wider than its pane is cut silently at the pane's edge (the scroll box clips it): in the two-thirds pane a list row of three groups of 3 tiles joined by " + " lost its third group, and one group of 3 tiles with 2 " + " texts takes about a third of that pane. **Not verified**: `columns` in the TAB menu (only the V menu was tested).
+Status: **verified in game** in the V menu (2026-10-23, game 1.1.5024, API 0.1.1, probe). `columns({ 1, 2 })` shows two panes at a third and two thirds with the 24 gap; a `grid` in the narrow pane shows 4 tiles per row; the grid and a list scroll independently in their panes; an input in a pane fires `onChange`; clicks route in both panes, also after `tab:refresh()` rebuilt the page; small text in a pane is left-aligned. The log had no "could not" line for the slot calls. Content wider than its pane is cut silently at the pane's edge (the scroll box clips it): in the two-thirds pane a list row of three groups of 3 tiles joined by " + " lost its third group, and one group of 3 tiles with 2 " + " texts takes about a third of that pane. **Not verified**: `columns` in the TAB menu (only the V menu was tested), and the `divider` option: the line itself was verified in rows in a probe (see `row:divider()`), but its slot between panes (Auto size, vertical alignment Fill, padding 12) was not tried, so how it looks was **not verified** in the probe. Through the API 0.1.2 (2026-10-23, game 1.1.5024, API 0.1.2 test build) `page:columns({ 1, 2 }, { divider = true })` is **verified in game** in the V menu: the line shows between the panes. Not verified in the TAB menu.
 
 ### `pane:clear()`
 
@@ -316,7 +357,7 @@ After `clear`, the handles made in that pane before (texts, inputs, rows, lists,
 
 It is made to be called from a click callback of a tile or button in the same pane (the example above): the click router has already picked the callback when it runs, so dropping the clicked widget's own entry is safe.
 
-Status: **verified in game** in the V menu for the case the probe exercised (2026-10-23, game 1.1.5024, API 0.1.1): a click on a tile in the left pane called `right:clear()` and rebuilt the right pane with no flicker, many times in a row and on the same tile repeatedly; the left grid kept its scroll; the arrows and the button of the rebuilt pane routed clicks. **Not verified**: clearing a pane from a click on a tile inside that same pane (the probe only cleared the right pane from left-pane tiles, and its right-pane arrows and button did not clear). The log had no "pane:clear failed" line.
+Status: **verified in game** in the V menu for the case the probe exercised (2026-10-23, game 1.1.5024, API 0.1.1): a click on a tile in the left pane called `right:clear()` and rebuilt the right pane with no flicker, many times in a row and on the same tile repeatedly; the left grid kept its scroll; the arrows and the button of the rebuilt pane routed clicks. Clearing a pane from a click on a button inside that same pane, with an input in the pane, is **verified in game** too (2026-10-23, game 1.1.5024, API 0.1.2, through Cauldron Recipes: the Show advanced / Show normal button clears and rebuilds the left pane): no flicker, and the search box keeps filtering after the rebuild. The log had no "pane:clear failed" line.
 
 ## World
 
@@ -442,11 +483,15 @@ Status: **verified in game** with a throwaway mod (the console opens with both k
 | `LoadAsset` | Loads a game class (the button, the tiles) or the arrow texture `T_UI_RightArrow` if it is not loaded yet | returns the texture when it is already loaded (probe, 2026-10-22; the arrows through the API, 2026-10-22, API 0.1.5); loading an asset that is not loaded yet is not verified (not needed so far) |
 | `WrapBox:ClearChildren` | `grid:clear()` | verified in game (dev build 0.1.1) |
 | `WBP_ButtonBase_C:SetIsEnabled` | `button:enable(on)` | verified in a probe (2026-10-21): grey, clicks ignored |
-| `TextBlock:SetColorAndOpacity` | `text:color(r, g, b, a)` | verified on page and row texts (2026-10-21); list texts not verified |
+| `TextBlock:SetColorAndOpacity` | `text:color(r, g, b, a)` | verified on page and row texts (2026-10-21) and on list-row texts (2026-10-23, game 1.1.5024, API 0.1.2) |
 | `ScaleBox` (`SetStretch(7)`, `SetUserSpecifiedScale`), `Overlay`, `Image:SetDesiredSizeOverride`, `Image:SetRenderScale` | Small text and buttons, arrow buttons (`row:arrow`) | `ScaleBox` and the arrow overlay verified in a probe and through the API (2026-10-22, game 1.1.5024, API 0.1.5) |
 | `HorizontalBoxSlot:SetVerticalAlignment(2)`, `VerticalBoxSlot:SetHorizontalAlignment(1)` | Centered rows, left-aligned small text on a page | the horizontal box slot is verified in a probe (2026-10-22); the vertical box slot call is verified through the API (2026-10-22, game 1.1.5024, API 0.1.5): small text starts at the left edge |
-| `HorizontalBoxSlot:SetSize` (Fill) and `SetPadding`, `VerticalBox:ClearChildren` (a pane) | `page:columns`: the panes' widths and gap, and `pane:clear()` | verified in game in the V menu (2026-10-23, game 1.1.5024, API 0.1.1); `ClearChildren` from the click of a tile in the same pane not verified |
+| `HorizontalBoxSlot:SetSize` (Fill) and `SetPadding`, `VerticalBox:ClearChildren` (a pane) | `page:columns`: the panes' widths and gap, and `pane:clear()` | verified in game in the V menu (2026-10-23, game 1.1.5024, API 0.1.1); `ClearChildren` from a button click in the same pane, with an input in it, verified (API 0.1.2) |
 | `Spacer:SetSize` (`/Script/UMG.Spacer`) | `page:space`, `pane:space`, `row:space`, `section:space` | verified in game in the V menu (2026-10-23, game 1.1.5024, API 0.1.1) |
+| `WBP_EntryDivider_C` (made with `Create`; `ShowText`, `Txt_BuildOptionType:SetVisibility`) | `page:divider`, `pane:divider`, `section:divider` | verified in a probe and through the API 0.1.2 (2026-10-23, game 1.1.5024); the solid line fallback is not verified |
+| `Image` with no texture inside a `SizeBox` (`SetWidthOverride`, `SetHeightOverride`), `Image:SetColorAndOpacity`, `SetVisibility(3)` | `row:divider`, the solid line fallback, the column divider | vertical line verified in a probe and through the API 0.1.2 (`row:divider`, column divider in the V menu; 2026-10-23, game 1.1.5024); horizontal fallback not verified |
+| `ScrollBox.WidgetBarStyle` and `ScrollbarThickness` copied from `WBP_CatalogContent_C:WidgetTree.ScrollBox_40`; `EditableTextBox.WidgetStyle` copied from `WBP_BuildPanelNew_C:WidgetTree.Edit_BlueprintSearch` | The game's scrollbar and search box look | copy before adding verified in a probe and through the API 0.1.2 (2026-10-23, game 1.1.5024, no crash; the search box with typing, `get`, `set` and `onChange`) |
+| `button.ContentBorder:SetPadding` | Room around the label of small buttons | verified in a probe and through the API 0.1.2 (2026-10-23, game 1.1.5024; padding 16 looked right) |
 | `TextBlock:SetAutoWrapText` | `page:text(str, { wrap = true })` | verified in a probe (2026-10-21) |
 | `WidgetSwitcher:GetChildIndex`, `GetChildAt`, `GetActiveWidgetIndex`, `SetActiveWidgetIndex`, widget `RemoveFromParent` | Check where our pages are, keep the highlight, clean up | not verified |
 | `FindAllOf`, `GetOuter` | Fallback lookup of the tab bar if the member names change | not verified |
