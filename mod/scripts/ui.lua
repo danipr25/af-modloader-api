@@ -19,6 +19,7 @@ local CLASS = {
   image = "/Script/UMG.Image",
   sizeBox = "/Script/UMG.SizeBox",
   divider = "/Game/Blueprints/WBP/CatalogPanel/WBP_EntryDivider.WBP_EntryDivider_C",
+  tagSwitcher = "/Game/Blueprints/WBP/Utility/WBP_TagSwitcher.WBP_TagSwitcher_C",
   library = "/Script/UMG.Default__WidgetBlueprintLibrary",
 }
 ui.CLASS = CLASS
@@ -45,6 +46,9 @@ local USER_SPECIFIED, HIT_TEST_INVISIBLE = 7, 3
 -- larger than the button's art seems to need, because the scale shrinks it too (64 is a guess: the in-game test
 -- checks it).
 local SMALL_TEXT_SCALE, SMALL_BUTTON_SCALE, ARROW_SCALE, ARROW_IMAGE_SIZE = 0.7, 0.7, 0.6, 64.0
+-- A mark (row:mark) is the game's tab widget made invisible, narrowed to 40, with the label on top, drawn at 0.6
+-- (verified in a probe, game 1.1.5024, 2026-10-23).
+local MARK_SCALE, MARK_WIDTH, V_TOP = 0.6, 40.0, 1
 -- A small button's label gets this much room on each side (10 was picked in a probe on 2026-10-23; 16 after
 -- the API test showed "Show advanced" filling its button).
 local SMALL_BUTTON_PADDING = 16.0
@@ -229,6 +233,7 @@ end
 -- ctx: { panel = the WBP_PlayerGearPanel_C, tree = its WidgetTree, root = the page's VerticalBox,
 --        owner = mod id for logs, log = function(text), clicks = the click router (clicks.lua),
 --        onTileCreated = function(class) called after a tile of that class was made,
+--        onMarkCreated = function(class) called after a mark (row:mark) of that tab widget class was made,
 --        kind = "page" (default) or "section": names the page in error messages }
 -- Returns the page handle for the mod and a session table: session.alive turns false when the page is rebuilt, and
 -- session.inputs lists the inputs whose changes must be polled ({ read, last, onChange }).
@@ -464,6 +469,17 @@ function ui.newPage(ctx)
     end
   end
 
+  -- The click hook of the tab widget class (the marks' and the tab bar arrows') can only be registered once the
+  -- class is loaded: now it is.
+  local function notifyMarkCreated(class)
+    if ctx.onMarkCreated then
+      local okHook, hookProblem = pcall(ctx.onMarkCreated, class)
+      if not okHook then
+        ctx.log("could not prepare the mark click hook: " .. tostring(hookProblem))
+      end
+    end
+  end
+
   -- Creates one of the game's buttons with its label (an empty label for the arrows).
   local function createButton(label)
     local library = StaticFindObject(CLASS.library)
@@ -636,6 +652,63 @@ function ui.newPage(ctx)
     }
   end
 
+  -- A mark: a small clickable label in a list row. The game's tab widget (emptied, 40 wide, render opacity 0) is the
+  -- click target; a text sits on top of it in an Overlay (not hit-testable, so the click lands on the tab widget), all
+  -- inside a ScaleBox at 0.6. Its row slot is aligned to the top. The handle is the text handle ({ set, color }).
+  -- track(address) lets the list forget the click entry when it is cleared.
+  local function makeMark(hbox, label, onClick, extraCheck, tag, track)
+    if type(label) ~= "string" or label == "" then
+      error('row:mark needs the label as text, like "x"', 3)
+    end
+    if type(onClick) ~= "function" then
+      error("row:mark needs a function: row:mark(label, function() ... end)", 3)
+    end
+    local library = StaticFindObject(CLASS.library)
+    local class = ui.findClass(CLASS.tagSwitcher, ctx.log)
+    if not isValid(library) or not class then
+      error("the tab widget class of the game was not found")
+    end
+    local switcher = library:Create(ctx.panel, class, ui.playerController())
+    if not isValid(switcher) then
+      error("the game did not create a tab widget")
+    end
+    switcher.Title = FText("")
+    switcher.Txt_Title:SetText(FText(""))
+    switcher.Txt_Title_Highlight:SetText(FText(""))
+    local root = switcher.WidgetTree.RootWidget
+    root:SetMinDesiredWidth(MARK_WIDTH)
+    root:SetMaxDesiredWidth(MARK_WIDTH)
+    switcher:SetRenderOpacity(0.0)
+    local overlay = ui.construct(CLASS.overlay, ctx.tree)
+    overlay:AddChildToOverlay(switcher)
+    local handle = makeText(label, function(widget)
+      widget:SetVisibility(HIT_TEST_INVISIBLE)
+      local inner = overlay:AddChildToOverlay(widget)
+      inner:SetHorizontalAlignment(H_CENTER)
+      inner:SetVerticalAlignment(V_CENTER)
+    end, extraCheck, nil, false)
+    local box = scaleBox(ctx.tree, MARK_SCALE)
+    box:AddChild(overlay)
+    local slot = hbox:AddChildToHorizontalBox(box)
+    local ok, problem = pcall(function()
+      slot:SetVerticalAlignment(V_TOP)
+    end)
+    if not ok then
+      warnOnce(
+        "mark top",
+        "a mark could not be aligned to the top of its row, it sits in the middle: " .. tostring(problem)
+      )
+    end
+    local address = registerClick(switcher, extraCheck, function()
+      onClick()
+    end, nil, tag)
+    if address then
+      track(address)
+    end
+    notifyMarkCreated(class)
+    return handle
+  end
+
   -- Makes a scroll box (or a row of columns) fill the rest of its container.
   local function fillSlot(slot, what)
     local okFill = pcall(function()
@@ -679,8 +752,9 @@ function ui.newPage(ctx)
   end
 
   -- The functions of a horizontal row. extraCheck (optional) says whether the row is still current. tag is the
-  -- session its clicks are filed under (the page's when nil).
-  local function makeRow(hbox, extraCheck, withButtons, tag)
+  -- session its clicks are filed under (the page's when nil). markTracker (list rows only): function(address) that
+  -- remembers the address of a mark's click entry; it also means the row has row:mark.
+  local function makeRow(hbox, extraCheck, withButtons, tag, markTracker)
     local rowLive = liveCheck(hbox, "row", extraCheck)
     local row = {}
     -- opts (optional): { size = "small" } shows the text at 0.7 of its size.
@@ -758,6 +832,16 @@ function ui.newPage(ctx)
       end
       gap()
     end
+    if markTracker then
+      -- A small clickable label at the top of the row, after the things already in it.
+      function row.mark(_, label, onClick)
+        if not rowLive() then
+          return inertText()
+        end
+        local handle = makeMark(hbox, label, onClick, extraCheck, tag, markTracker)
+        return handle -- not a tail call: a tail call would drop the mod's frame from the error level
+      end
+    end
     if withButtons then
       -- opts (optional): { small = true } shows a smaller button (a ScaleBox at 0.7).
       function row.button(_, label, onClick, opts)
@@ -788,6 +872,7 @@ function ui.newPage(ctx)
     item = function() end,
     space = function() end,
     divider = function() end,
+    mark = inertText,
   }
   local inertPageRow = {
     text = inertText,
@@ -1048,6 +1133,7 @@ function ui.newPage(ctx)
       local slot = root:AddChildToVerticalBox(scroll)
       fillSlot(slot, "list")
       local generation = 0
+      local addresses = {} -- click entries of the marks of the current generation
       local live = liveCheck(scroll, "list", withScope(scope))
       local list = {}
 
@@ -1055,6 +1141,10 @@ function ui.newPage(ctx)
         if live() then
           scroll:ClearChildren()
           generation = generation + 1 -- rows made before this point are dead
+          for _, address in ipairs(addresses) do
+            ctx.clicks:forget(address)
+          end
+          addresses = {}
         end
       end
 
@@ -1068,7 +1158,11 @@ function ui.newPage(ctx)
         local function sameGeneration()
           return born == generation
         end
-        return makeRow(hbox, withScope(scope, sameGeneration), false, scope.tag)
+        return makeRow(hbox, withScope(scope, sameGeneration), false, scope.tag, function(address)
+          if sameGeneration() then
+            addresses[#addresses + 1] = address
+          end
+        end)
       end
 
       return list
