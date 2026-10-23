@@ -2,7 +2,7 @@
 
 A shared library mod for **Alchemy Factory** mods that run on [AF Mod Loader](https://github.com/danipr25/af-modloader). Mods use it to add tabs to the TAB menu and the V menu, add sections to the V menu's item sheet, and add console commands, without overwriting each other. It includes a template for new mods.
 
-Unofficial fan project. Alchemy Factory belongs to its developers. Status: version 0.1.7. The API may change until 1.0.
+Unofficial fan project. Alchemy Factory belongs to its developers. Status: version 0.1.0. The API may change until 1.0.
 
 ## Install
 

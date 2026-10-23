@@ -1,6 +1,6 @@
 # The V menu (item catalog)
 
-How the in-game V menu (tabs Materials, Goods, Stats, Ledger) is built, so the API can add tabs to it and sections to its item sheet (API 0.1.7). Game 1.1.5024. Facts marked **verified** were observed in game on 2026-10-22 with a throwaway probe mod (hooks, widget names, adding a tab, a page and an item sheet section). Everything else is **unverified**: it is written from that probe and from the TAB menu work, and waits for the in-game test of the API.
+How the in-game V menu (tabs Materials, Goods, Stats, Ledger) is built, so the API can add tabs to it and sections to its item sheet. Game 1.1.5024. Facts marked **verified** were observed in game on 2026-10-22 with a throwaway probe mod (hooks, widget names, adding a tab, a page and an item sheet section). Everything else is **unverified**: it is written from that probe and from the TAB menu work, and waits for the in-game test of the API.
 
 ## Structure
 

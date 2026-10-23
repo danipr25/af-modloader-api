@@ -13,7 +13,7 @@ A `WrapBox` (`/Script/UMG.WrapBox`, created with `StaticConstructObject` and out
 - Clicking it calls its `OnMouseButtonDown`. A post hook on `WBP_RecipeItemTile_C:OnMouseButtonDown` receives the tile as the context, so the clicked tile is known by comparing addresses. With its `ClickEvent` property left at `false` (the default), the game does nothing else on the click.
 - The hook fires for every `WBP_RecipeItemTile_C` in the game, so the handler must ignore tiles it did not create.
 
-`WBP_SimpleItemTile_C` (used by the API's `row:item` without `onClick`, and by list rows) has no click function. With `onClick`, a page row's `row:item` uses `WBP_RecipeItemTile_C` instead (API 0.1.6; its look inside a `HorizontalBox` is verified in game, 2026-10-22, game 1.1.5024).
+`WBP_SimpleItemTile_C` (used by the API's `row:item` without `onClick`, and by list rows) has no click function. With `onClick`, a page row's `row:item` uses `WBP_RecipeItemTile_C` instead (its look inside a `HorizontalBox` is verified in game, 2026-10-22, game 1.1.5024).
 
 ## Buttons
 

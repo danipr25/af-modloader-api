@@ -62,7 +62,7 @@ Verified with the API on 2026-10-21: two added tabs work; loading another save g
 
 Not tested yet: gamepad navigation to the new tab. Keyboard: no keys switch tabs (Q/E and A/D are used by the game for other things).
 
-## Paging the tab bar (API 0.1.4)
+## Paging the tab bar
 
 Verified in game 1.1.5024 on 2026-10-22 with two throwaway probes (tab bar and arrows; widths, texture and page box). The API's use of them is verified in game with API 0.1.4 build a3d30e8 (2026-10-22, see below).
 
