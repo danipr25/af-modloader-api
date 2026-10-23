@@ -138,6 +138,4 @@ jobs:
           $tag = $env:GITHUB_REF_NAME
           $version = $tag.Substring(1)
           $ghArgs = @($tag) + (Get-ChildItem dist -File).FullName + @('--title', "AF Mod Loader API $version", '--notes-file', 'notes.md', '--verify-tag')
-          # Versions before 1.0 are pre-releases.
-          if ($version.StartsWith('0.')) { $ghArgs += '--prerelease' }
           gh release create @ghArgs
