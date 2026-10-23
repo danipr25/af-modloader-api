@@ -1,40 +1,23 @@
 # AF Mod Loader API
 
-Shared helpers for **Alchemy Factory** mods loaded by AF Mod Loader, so mods that touch the same part of the game coexist instead of overwriting each other. It is a regular mod that other mods depend on, and it includes a template for starting new mods.
+A shared library mod for **Alchemy Factory** mods that run on [AF Mod Loader](https://github.com/danipr25/af-modloader). Mods use it to add tabs to the TAB menu and the V menu, add sections to the V menu's item sheet, and add console commands, without overwriting each other. It includes a template for new mods.
 
-Status: version 0.1.7, in development. Each piece's in-game status is in docs/api.md. The API stays at 0.x, and may change, until 1.0.
+Unofficial fan project. Alchemy Factory belongs to its developers. Status: version 0.1.7. The API may change until 1.0.
 
-Unofficial fan project. Alchemy Factory belongs to its developers.
+## Install
 
-## For players
+You only need it when a mod asks for it. AF Mod Loader must be installed first.
 
-You only need this mod when another mod says it needs "AF Mod Loader API". Put the `af-modloader-api` folder in `<game folder>\mods`, next to that mod. AF Mod Loader must be installed.
+1. Close the game.
+2. Copy the `mod` folder to `<game>\mods` and rename the copy to `af-modloader-api`.
 
-### What it changes in the game
+On its own it changes nothing in the game. It adds things only in memory while the game runs, never touches your saves and uses no network.
 
-On its own, nothing you can see. When a mod uses it, the API can:
+**Console.** If a mod adds a console command, the API turns on Unreal Engine's developer console: F10, or the key left of 1. That console also accepts every engine command, and some of those can crash the game, so only use commands you understand. `af.help` lists the commands mods added. To keep the console off, create `<game>\mods\.data\af-modloader-api.json` with `{ "console": false }`.
 
-- **Add tabs to the TAB menu** (the screen with Player, World and Recognition) or to the V menu (the item catalog with Materials, Goods, Stats and Ledger), and **add a section to the V menu's item sheet**. They are added while the game runs, in memory. No game file is changed.
-- **Turn on the in-game console**, only if a mod added a console command. The console opens with F10 or the key left of 1.
-- It reads and writes nothing in your saves, makes no network connection, and writes no files. The only file it looks at is the optional `af-modloader-api.json` described below.
+## Make a mod
 
-### About the console
-
-The console is **Unreal Engine's full developer console**, not a small box for the commands of mods. Besides the commands that mods add, it accepts everything the engine does, and some of that can crash the game or change its settings. Only use commands you understand. Type `af.help` to see the commands the installed mods added.
-
-If you do not want the console at all, create the file `<game folder>\mods\.data\af-modloader-api.json` with this content:
-
-```json
-{ "console": false }
-```
-
-Then the API never turns the console on, and the commands of mods cannot be used. If the file does not exist, the console is turned on when a mod needs it. `UE4SS.log` says whether the console was turned on and which mods asked for it.
-
-## For mod authors
-
-- [docs/api.md](docs/api.md): the API, with an example for every function and what has been verified in the game.
-- [template/my-mod](template/my-mod): a starting point. Copy it, rename it, edit `scripts/main.lua`.
-- [docs/tab-menu.md](docs/tab-menu.md), [docs/catalog-menu.md](docs/catalog-menu.md) and [docs/console.md](docs/console.md): how the game's TAB menu, V menu and console work, as verified in game.
+Copy [template/my-mod](template/my-mod), rename it, change `id` and `name` in `mod.json`, and edit `scripts/main.lua`.
 
 ```lua
 local api = AF.require("af-modloader-api").use(AF)
@@ -42,18 +25,26 @@ local api = AF.require("af-modloader-api").use(AF)
 api.tabs.add({
   id = "hello",
   title = "Hello",
+  menu = "catalog", -- the V menu; leave it out for the TAB menu
   build = function(page)
     page:text("Hello from my mod")
   end,
 })
 ```
 
-### Development
+Reference: [docs/api.md](docs/api.md), with every function, an example and its in-game status. How the game's menus and console work: [TAB menu](docs/tab-menu.md), [V menu](docs/catalog-menu.md), [console](docs/console.md).
 
-Needs Lua 5.4, StyLua and Luacheck (see AGENTS.md). `lua scripts/check.lua` runs formatting, lint and the tests.
+## Development
 
-To try the mod in a game that already has AF Mod Loader installed, close the game and run `lua scripts/dev-install.lua` from the repository root. Add `--with-template` to also install the template mod, and `--remove-template` to remove it again. Pass the game folder as an argument, or set `AF_GAME_DIR`.
+Needs Lua 5.4, StyLua 2.5.2 and Luacheck 1.2.0 on the PATH (how to install them is in the [AF Mod Loader README](https://github.com/danipr25/af-modloader#development)), and a game with AF Mod Loader installed for testing.
+
+| Command | What it does |
+|---|---|
+| `lua scripts/check.lua` | Formatting, lint and tests. `--fix` applies the formatting. |
+| `lua scripts/dev-install.lua` | Copies `mod` into `<game>\mods\af-modloader-api`. `--with-template` also installs the template, and `--remove-template` removes it. The game must be closed. |
+
+The game folder defaults to the Steam one. Pass another as the first argument or set `AF_GAME_DIR`.
 
 ## License
 
-MIT. See [LICENSE](LICENSE). The way the console is turned on follows UE4SS's ConsoleEnablerMod (MIT); its notice is in [docs/console.md](docs/console.md).
+MIT. See [LICENSE](LICENSE). The console code follows UE4SS's ConsoleEnablerMod (MIT); its notice is in [docs/console.md](docs/console.md).
