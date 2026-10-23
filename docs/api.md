@@ -1,6 +1,6 @@
 # API reference
 
-AF Mod Loader API 0.1.2 for mod authors. Game 1.1.5024, UE4SS 1181, AF Mod Loader 0.1.0.
+AF Mod Loader API 0.1.3 for mod authors. Game 1.1.5024, UE4SS 1181, AF Mod Loader 0.1.0.
 
 Each function says what is **verified in game** and what is **not verified yet**. Nothing marked "not verified" has run in the game: it is written from the UE4SS and Unreal Engine documentation, wrapped so that a failure is logged instead of crashing, and waits for the in-game test. Verified findings are recorded in [tab-menu.md](tab-menu.md), [catalog-menu.md](catalog-menu.md) and [console.md](console.md).
 
@@ -16,7 +16,7 @@ The API is 0.x until 1.0. A patch version (0.1.1) fixes things or adds functions
 
 `api.version` is the installed version as text, like `"0.1.0"`.
 
-Raise the lower bound to the first version that has every call your mod uses. Every call in this reference is in 0.1.0, so `>=0.1.0 <0.2.0` is enough, except the ones that say "added in 0.1.1" (`page:columns`, `pane:clear`, and the `space` functions): a mod that uses one needs `>=0.1.1 <0.2.0`. The ones that say "added in 0.1.2" (the `divider` functions and the options of `page:columns`) need `>=0.1.2 <0.2.0`. Later patch versions will say which version added what. Development builds before the first public release were numbered 0.1.1 to 0.1.7; 0.1.0 is the first public release, and the in-game verification records below that name those build numbers stay as they were written.
+Raise the lower bound to the first version that has every call your mod uses. Every call in this reference is in 0.1.0, so `>=0.1.0 <0.2.0` is enough, except the ones that say "added in 0.1.1" (`page:columns`, `pane:clear`, and the `space` functions): a mod that uses one needs `>=0.1.1 <0.2.0`. The ones that say "added in 0.1.2" (the `divider` functions and the options of `page:columns`) need `>=0.1.2 <0.2.0`. The one that says "added in 0.1.3" (`row:mark`) needs `>=0.1.3 <0.2.0`. Later patch versions will say which version added what. Development builds before the first public release were numbered 0.1.1 to 0.1.7; 0.1.0 is the first public release, and the in-game verification records below that name those build numbers stay as they were written.
 
 ### Threads
 
@@ -277,7 +277,7 @@ Adds a scrolling list of rows.
 - `list:row()` adds a row and returns it.
 - `row:text(str)` adds text to the row and returns a text handle (`:set`).
 - `row:item(itemName, count)` adds the game's item tile for the item, with its icon and the game's own tooltip. `itemName` is the item's name in the game's data (for example `"GentianNectar"`), `count` defaults to 1.
-- `row:mark(label, onClick)` (added in 0.1.3) adds a small clickable text to the row and returns a text handle (`set(label)` and `color(r, g, b, a)`, the same as `row:text`). `onClick()` is called when the player clicks it, with any mouse button, on press. It is for a star or a similar toggle: the mark stays where it is and `mark:set(...)` changes its label in place, without rebuilding the row. `label` must be a non-empty string and `onClick` a function, otherwise it is an error at your call. The mark is drawn at 0.6 of its size, takes about 40 of width and is aligned to the **top** of the row (not centered like the other things in a row), so next to tall item tiles it sits at the top right of the recipe. Its text has the default text color (white): color it with `mark:color(...)`. It exists **only on list rows**: page rows, pane rows and section rows have no `row:mark` (calling it there raises "attempt to call a nil value"). The clicks of a list's marks stop working when the list is cleared or the page is rebuilt, and on such a dead handle `set` and `color` do nothing. There is no hover or pressed look: the game's tab widget behind the text is invisible.
+- `row:mark(label, onClick)` (added in 0.1.3) adds a small clickable text to the row and returns a text handle (`set(label)` and `color(r, g, b, a)`, the same as `row:text`). `onClick()` is called when the player clicks it, with any mouse button, on press. It is for a star or a similar toggle: the mark stays where it is and `mark:set(...)` changes its label in place, without rebuilding the row. `label` must be a non-empty string and `onClick` a function, otherwise it is an error at your call. The mark is drawn at 0.6 of its size, is 40 wide before the 0.6 scale (not verified in game) and is aligned to the **top** of the row (not centered like the other things in a row), so next to tall item tiles it sits at the top right of the recipe. Its text has the default text color (white): color it with `mark:color(...)`. It exists **only on list rows**: page rows, pane rows and section rows have no `row:mark` (calling it there raises "attempt to call a nil value"). The clicks of a list's marks stop working when the list is cleared or the page is rebuilt, and on such a dead handle `set` and `color` do nothing. There is no hover or pressed look: the game's tab widget behind the text is invisible.
 
 ```lua
 local list = page:list()
