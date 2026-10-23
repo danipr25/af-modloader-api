@@ -8,7 +8,9 @@ Version 0.1.1.
 
 - `page:columns(widths)`: split the rest of a page into side-by-side panes with relative widths. A pane has the same text, input, row, list, grid and space as the page.
 - `pane:clear()`: rebuild one pane without rebuilding the page, also from a click inside that pane.
-- `page:space(height)`, `pane:space(height)`, `row:space(width)` and `section:space(height)`: empty space. Not verified in game yet.
+- `page:space(height)`, `pane:space(height)`, `row:space(width)` and `section:space(height)`: empty space.
+
+None of these new calls is verified in game yet.
 
 ## [0.1.0] - 2026-10-23
 

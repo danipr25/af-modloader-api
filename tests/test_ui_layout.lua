@@ -133,7 +133,6 @@ return {
       local page = newPage()
       local row = page:row()
       local list = page:list()
-      local built = #fake.widgets
       local bad = { 0, -1, 401, math.huge, -math.huge, 0 / 0, "12", {}, true }
       for _, value in ipairs(bad) do
         for _, call in ipairs({
@@ -159,7 +158,6 @@ return {
       lu.assertFalse(ok)
       -- Only the list rows made by the loop above exist; no spacer was built for a bad size.
       lu.assertEquals(#ofClass(ui.CLASS.spacer), 0)
-      lu.assertTrue(#fake.widgets >= built)
     end,
 
     testBadWidthsAreRejectedBeforeAnythingIsBuilt = function()
@@ -312,7 +310,7 @@ return {
       lu.assertEquals(#callsOf(ofClass(ui.CLASS.text)[2], "SetText"), 2) -- built with it, then set
       local deadLogs = 0
       for _, line in ipairs(fake.logs) do
-        if line:find("after its page was rebuilt or closed", 1, true) then
+        if line:find("after its page was rebuilt or closed, or its pane was cleared", 1, true) then
           deadLogs = deadLogs + 1
         end
       end

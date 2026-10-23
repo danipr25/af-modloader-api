@@ -173,6 +173,7 @@ function Sections:build(rec, entry, item)
     owner = entry.owner,
     log = self.log,
     clicks = self.clicks,
+    kind = "section",
   }
   local page, session = ui.newPage(ctx)
   box.session = session

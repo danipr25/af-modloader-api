@@ -32,6 +32,9 @@ end
 -- session names the page's as its parent, so dropping a page also drops its panes' entries. Removing entries while
 -- walking the table is allowed, so this is safe inside a click callback too.
 function Router:dropSession(session)
+  if session == nil then
+    return
+  end
   for address, entry in pairs(self.entries) do
     if entry.session == session or (entry.session ~= nil and entry.session.parent == session) then
       self.entries[address] = nil

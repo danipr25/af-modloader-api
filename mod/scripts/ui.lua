@@ -184,7 +184,8 @@ end
 
 -- ctx: { panel = the WBP_PlayerGearPanel_C, tree = its WidgetTree, root = the page's VerticalBox,
 --        owner = mod id for logs, log = function(text), clicks = the click router (clicks.lua),
---        onTileCreated = function(class) called after a tile of that class was made }
+--        onTileCreated = function(class) called after a tile of that class was made,
+--        kind = "page" (default) or "section": names the page in error messages }
 -- Returns the page handle for the mod and a session table: session.alive turns false when the page is rebuilt, and
 -- session.inputs lists the inputs whose changes must be polled ({ read, last, onChange }).
 function ui.newPage(ctx)
@@ -205,8 +206,8 @@ function ui.newPage(ctx)
         warned = true
         ctx.log(
           string.format(
-            "mod %s used a %s after its page was rebuilt or closed: the call was ignored. "
-              .. "Handles only work until the next build of the page.",
+            "mod %s used a %s after its page was rebuilt or closed, or its pane was cleared: the call was ignored. "
+              .. "Handles only work until the next build of the page or the next clear of their pane.",
             ctx.owner,
             what
           )
@@ -542,7 +543,7 @@ function ui.newPage(ctx)
       slot:SetSize({ Value = 1.0, SizeRule = ui.FILL })
     end)
     if not okFill then
-      ctx.log(string.format("the %s could not be set to fill the page: a long one may not scroll", what))
+      ctx.log(string.format("the %s could not be set to fill the rest of its space: a long one may not scroll", what))
     end
   end
 
@@ -955,7 +956,7 @@ function ui.newPage(ctx)
     return c
   end
 
-  local page = makeContainer(ctx.root, { tag = session }, "page")
+  local page = makeContainer(ctx.root, { tag = session }, ctx.kind or "page")
 
   -- Splits the rest of the page into side-by-side panes whose widths are relative: columns({ 1, 2 }) is a third and
   -- two thirds. Returns one pane per entry. A pane has text, input, row, list, grid and space like the page, and
