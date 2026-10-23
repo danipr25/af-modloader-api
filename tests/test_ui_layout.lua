@@ -492,7 +492,7 @@ return {
       local boxes = ofClass(ui.CLASS.scale)
       lu.assertEquals(callsOf(boxes[1], "SetUserSpecifiedScale")[1][1], 0.7)
       local border = ofClass("ContentBorder")[1]
-      lu.assertEquals(callsOf(border, "SetPadding")[1][1], { Left = 10.0, Top = 0.0, Right = 10.0, Bottom = 0.0 })
+      lu.assertEquals(callsOf(border, "SetPadding")[1][1], { Left = 16.0, Top = 0.0, Right = 16.0, Bottom = 0.0 })
       row:arrow("next", function() end)
       lu.assertEquals(callsOf(ofClass(ui.CLASS.scale)[2], "SetUserSpecifiedScale")[1][1], 0.6)
     end,

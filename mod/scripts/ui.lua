@@ -45,8 +45,9 @@ local USER_SPECIFIED, HIT_TEST_INVISIBLE = 7, 3
 -- larger than the button's art seems to need, because the scale shrinks it too (64 is a guess: the in-game test
 -- checks it).
 local SMALL_TEXT_SCALE, SMALL_BUTTON_SCALE, ARROW_SCALE, ARROW_IMAGE_SIZE = 0.7, 0.7, 0.6, 64.0
--- A small button's label gets this much room on each side (verified in game, 2026-10-23).
-local SMALL_BUTTON_PADDING = 10.0
+-- A small button's label gets this much room on each side (10 was picked in a probe on 2026-10-23; 16 after
+-- the API test showed "Show advanced" filling its button).
+local SMALL_BUTTON_PADDING = 16.0
 -- Solid lines: their thickness and the room on each side of a vertical one (verified in game, 2026-10-23).
 local LINE_THICKNESS, LINE_SPACE = 2.0, 16.0
 -- Layout: the gap between the panes of page:columns (a guess, the in-game test checks it) and the largest space a
