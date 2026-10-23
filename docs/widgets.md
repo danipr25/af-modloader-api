@@ -78,7 +78,7 @@ Verified in game with a throwaway mod on a tab in the V menu (game 1.1.5024, UE4
 
 - Path: `/Game/Blueprints/WBP/CatalogPanel/WBP_EntryDivider.WBP_EntryDivider_C`, the divider the V menu uses between categories. `Create` works and the class is loaded (no crash).
 - Plain it measures 1020 x 16 (two halves with diamond ends); with a heading 1133 x 44.
-- Heading: round 1 set `divider.Txt_BuildOptionType:SetText(...)` and the divider showed "Logistics", the blueprint's default `ShowText`, written back on `PreConstruct`. **Failed.** Round 2: `divider.ShowText = FText("Cauldron")` before adding the divider works. The text is the game's dark color.
+- Heading: round 1 set `divider.Txt_BuildOptionType:SetText(...)` and the divider showed "Logistics", the blueprint's default `ShowText`, written back on `PreConstruct`. **Failed.** Round 2: `divider.ShowText = FText("Cauldron")` and `divider.Txt_BuildOptionType:SetText(FText("Cauldron"))` together, before adding the divider, work (the API sets both; whether `ShowText` alone is enough was not tried). The text is the game's dark color.
 - No heading: `divider.Txt_BuildOptionType:SetVisibility(1)` (Collapsed) gives a plain line.
 
 ### Solid lines: `Image` + `SizeBox`
@@ -91,7 +91,7 @@ Verified in game with a throwaway mod on a tab in the V menu (game 1.1.5024, UE4
 
 ### Scrollbar
 
-- The live item sheet is destroyed when the V menu closes, but the class's widget-tree templates stay loaded: `StaticFindObject("/Game/Blueprints/WBP/CatalogPanel/WBP_CatalogContent.WBP_CatalogContent_C:WidgetTree.ScrollBox_40")` finds one.
+- The live item sheet is destroyed when the V menu closes, but the class's widget-tree templates were still found afterwards (the class was loaded in that session; if the owning class is not loaded yet, for example before the V menu was ever opened, the API loads it first with `LoadAsset`, which is not verified): `StaticFindObject("/Game/Blueprints/WBP/CatalogPanel/WBP_CatalogContent.WBP_CatalogContent_C:WidgetTree.ScrollBox_40")` finds one.
 - Works: `list.WidgetBarStyle = template.WidgetBarStyle` and `list.ScrollbarThickness = template.ScrollbarThickness` on a new `ScrollBox` **before** adding it: the game's scrollbar (frame and thumb, thickness 22), no crash.
 - Partial: the same copy after `AddChild` applied only partly (a thin track, no frame). So the API copies before adding.
 - `FindFirstOf("WBP_CatalogContent_C")` gave nothing usable (the live widget is gone while the menu is closed), hence the template.

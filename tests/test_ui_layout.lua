@@ -180,7 +180,10 @@ end
 
 return {
   TestLayout = {
-    setUp = setupGame,
+    setUp = function()
+      setupGame()
+      ui.resetNotes()
+    end,
     tearDown = restoreGame,
 
     testBadSizesAreRejectedAtTheModsCallBeforeAnythingIsBuilt = function()
@@ -458,6 +461,28 @@ return {
       lu.assertEquals(#ofClass(ui.CLASS.scroll), 2) -- the widgets are still made
       lu.assertEquals(logsWith("scrollbar style was not found"), 1)
       lu.assertEquals(logsWith("search box style was not found"), 1)
+      -- A second page (a rebuild) does not log it again.
+      local again = newPage()
+      again:grid()
+      again:input()
+      lu.assertEquals(logsWith("scrollbar style was not found"), 1)
+      lu.assertEquals(logsWith("search box style was not found"), 1)
+    end,
+
+    testTheOwningClassIsLoadedBeforeItsTemplateIsLookedUp = function()
+      local order = {}
+      local find = _G.StaticFindObject
+      _G.StaticFindObject = function(path)
+        order[#order + 1] = path
+        return find(path)
+      end
+      newPage():grid()
+      local classAt, templateAt
+      for i, path in ipairs(order) do
+        classAt = classAt or (path == ui.SCROLL_CLASS and i or nil)
+        templateAt = templateAt or (path == ui.SCROLL_TEMPLATE and i or nil)
+      end
+      lu.assertTrue(classAt ~= nil and templateAt ~= nil and classAt < templateAt)
     end,
 
     testSmallButtonsAreScaledAndPaddedAndArrowsKeepTheirScale = function()
@@ -496,6 +521,7 @@ return {
       local dividers = ofClass("divider")
       lu.assertEquals(#dividers, 2)
       lu.assertEquals(dividers[1].ShowText, "Cauldron")
+      lu.assertEquals(callsOf(dividers[1].Txt_BuildOptionType, "SetText")[1][1], "Cauldron")
       lu.assertTrue(writeOf(dividers[1], "ShowText") < addOf(dividers[1]))
       lu.assertEquals(callsOf(dividers[2].Txt_BuildOptionType, "SetVisibility")[1][1], 1)
       lu.assertNil(writeOf(dividers[2], "ShowText"))

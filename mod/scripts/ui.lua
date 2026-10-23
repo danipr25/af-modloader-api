@@ -26,6 +26,8 @@ ui.FILL = 1 -- ESlateSizeRule::Fill
 ui.ARROW_TEXTURE = "/Game/Arts/UI/Interaction/T_UI_RightArrow.T_UI_RightArrow"
 -- Class templates the game's own widgets were styled in. Their styles are copied onto ours (never built from a Lua
 -- table: a table passed as a font struct crashed the game, see docs/widgets.md).
+ui.SCROLL_CLASS = "/Game/Blueprints/WBP/CatalogPanel/WBP_CatalogContent.WBP_CatalogContent_C"
+ui.SEARCH_CLASS = "/Game/Blueprints/WBP/BuildOptionsPanel/WBP_BuildPanelNew.WBP_BuildPanelNew_C"
 ui.SCROLL_TEMPLATE = "/Game/Blueprints/WBP/CatalogPanel/WBP_CatalogContent.WBP_CatalogContent_C:WidgetTree.ScrollBox_40"
 ui.SEARCH_TEMPLATE =
   "/Game/Blueprints/WBP/BuildOptionsPanel/WBP_BuildPanelNew.WBP_BuildPanelNew_C:WidgetTree.Edit_BlueprintSearch"
@@ -113,6 +115,15 @@ function ui.findTexture(path, log)
   if isValid(texture) then
     return texture
   end
+end
+
+-- Style problems are logged once per Lua state (not per page), so rebuilding a page never repeats them.
+local styleWarned = {}
+
+-- Forgets what was logged once (findClass notes and style problems). For tests.
+function ui.resetNotes()
+  classNotes = {}
+  styleWarned = {}
 end
 
 -- Creates a widget of a UMG class (verified for VerticalBox, TextBlock, EditableTextBox, ScrollBox and WrapBox).
@@ -277,18 +288,28 @@ function ui.newPage(ctx)
     end
   end
 
+  local function styleNote(key, text)
+    if not styleWarned[key] then
+      styleWarned[key] = true
+      ctx.log(string.format("mod %s: %s", ctx.owner, text))
+    end
+  end
+
   -- Copies a style from a template widget of the game onto our widget, in a pcall. It must run BEFORE the widget is
   -- added to its parent: after that only part of it applies (verified in game, 2026-10-23). apply(template) does the
-  -- copy. If the template is missing or the copy fails, the engine default stays and one line is logged.
-  local function copyStyle(path, what, apply)
+  -- copy. The template lives in a widget class that may not be loaded yet, so the class is loaded first (as for the
+  -- buttons). If the template is missing or the copy fails, the engine default stays and one line is logged per Lua
+  -- state.
+  local function copyStyle(classPath, path, what, apply)
+    ui.findClass(classPath, ctx.log)
     local template = StaticFindObject(path)
     if not isValid(template) then
-      warnOnce(what, string.format("the game's %s style was not found (%s), the engine default is used", what, path))
+      styleNote(what, string.format("the game's %s style was not found (%s), the engine default is used", what, path))
       return
     end
     local ok, problem = pcall(apply, template)
     if not ok then
-      warnOnce(
+      styleNote(
         what,
         string.format(
           "the game's %s style could not be copied, the engine default is used: %s",
@@ -730,7 +751,7 @@ function ui.newPage(ctx)
       end)
       if not ok then
         warnOnce(
-          "divider fill",
+          "row divider fill",
           "a row divider could not fill the row's height, it may be short: " .. tostring(problem)
         )
       end
@@ -832,7 +853,7 @@ function ui.newPage(ctx)
 
   -- The game's scrollbar (frame and thumb): copied from a ScrollBox of the item sheet before the new one is added.
   local function applyScrollStyle(scroll)
-    copyStyle(ui.SCROLL_TEMPLATE, "scrollbar", function(template)
+    copyStyle(ui.SCROLL_CLASS, ui.SCROLL_TEMPLATE, "scrollbar", function(template)
       scroll.WidgetBarStyle = template.WidgetBarStyle
       scroll.ScrollbarThickness = template.ScrollbarThickness
     end)
@@ -854,6 +875,7 @@ function ui.newPage(ctx)
       end
       if heading then
         divider.ShowText = FText(heading)
+        divider.Txt_BuildOptionType:SetText(FText(heading)) -- both were set in the verified probe
       else
         divider.Txt_BuildOptionType:SetVisibility(COLLAPSED)
       end
@@ -909,7 +931,7 @@ function ui.newPage(ctx)
         error(kind .. ":input takes an optional table { hint = text, onChange = function(text) end }", 2)
       end
       local box = ui.construct(CLASS.edit, ctx.tree)
-      copyStyle(ui.SEARCH_TEMPLATE, "search box", function(template)
+      copyStyle(ui.SEARCH_CLASS, ui.SEARCH_TEMPLATE, "search box", function(template)
         box.WidgetStyle = template.WidgetStyle
       end)
       if spec.hint then
@@ -1011,7 +1033,7 @@ function ui.newPage(ctx)
         slot:SetHorizontalAlignment(H_FILL)
       end)
       if not ok then
-        warnOnce("divider fill", "a divider could not fill the width, it may be short: " .. tostring(slotProblem))
+        warnOnce("line fill", "a divider could not fill the width, it may be short: " .. tostring(slotProblem))
       end
     end
 
