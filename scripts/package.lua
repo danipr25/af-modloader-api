@@ -5,8 +5,8 @@ Usage: lua scripts/package.lua
 
 Run it from the repository root.
 
-Builds dist\<id>-<version>.zip. The zip holds one folder, <id>\, with the contents of mod\. To install it, extract the
-zip into <game>\mods. The id and the version are read from mod\mod.json.
+Builds dist\<id>-<version>.zip. The zip holds one folder, <id>\, with the contents of mod\ and the LICENSE.
+To install it, extract the zip into <game>\mods. The id and the version are read from mod\mod.json.
 Stops if dist\ already holds anything else than that zip, so a release never carries stray files. Delete dist\ first.]]
 
 local SOURCE = "mod"
@@ -15,8 +15,13 @@ local STAGE = DIST .. "\\stage"
 -- Windows' own tar (bsdtar) writes zip files. Git's tar, which is first on the PATH of many machines, cannot.
 local TAR = "%SystemRoot%\\System32\\tar.exe"
 
+local staged = false
+
 local function fail(message)
   print("Error: " .. message)
+  if staged then
+    os.execute('rmdir /S /Q "' .. STAGE .. '" >nul 2>&1')
+  end
   os.exit(1)
 end
 
@@ -86,20 +91,26 @@ if dirExists(DIST) then
   end
 end
 
+if not readFile("LICENSE") then
+  fail("LICENSE was not found in the repository root")
+end
+staged = true
 run('xcopy "' .. SOURCE .. '" "' .. STAGE .. "\\" .. id .. '" /E /I /Y /Q', "copying " .. SOURCE)
+run('copy /Y "LICENSE" "' .. STAGE .. "\\" .. id .. '\\LICENSE" >nul', "copying LICENSE")
 os.remove(zipPath)
 run(TAR .. ' -a -c -f "' .. zipPath .. '" -C "' .. STAGE .. '" "' .. id .. '"', "creating the zip")
 run('rmdir /S /Q "' .. STAGE .. '"', "removing the staging folder")
+staged = false
 
--- The zip must hold <id>/mod.json, or the mod would not load after extracting it into <game>\mods.
-local found = false
+-- The zip must hold <id>/mod.json, or the mod would not load after extracting it into <game>\mods, and the LICENSE.
+local entries = {}
 for _, entry in ipairs(listing(TAR .. ' -tf "' .. zipPath .. '"')) do
-  if entry == id .. "/mod.json" then
-    found = true
-  end
+  entries[entry] = true
 end
-if not found then
-  fail(zipPath .. " does not hold " .. id .. "/mod.json")
+for _, required in ipairs({ "mod.json", "LICENSE" }) do
+  if not entries[id .. "/" .. required] then
+    fail(zipPath .. " does not hold " .. id .. "/" .. required)
+  end
 end
 print("Done: " .. zipPath)
 os.execute('certutil -hashfile "' .. zipPath .. '" SHA256')
