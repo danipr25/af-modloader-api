@@ -64,7 +64,7 @@ Not tested yet: gamepad navigation to the new tab. Keyboard: no keys switch tabs
 
 ## Paging the tab bar
 
-Verified in game 1.1.5024 on 2026-10-22 with two throwaway probes (tab bar and arrows; widths, texture and page box). The API's use of them is verified in game with API 0.1.4 build a3d30e8 (2026-10-22, see below).
+Verified in game 1.1.5024 on 2026-10-22 with two throwaway probes (tab bar and arrows; widths, texture and page box). The API's use of them is verified in game with API 0.1.4 build a3d30e8 (2026-10-22, see below). The API versions named here are development builds from before the first public release (see [Versions](api.md#versions)).
 
 - The bar (`TagSwithcer`) is child 0 of `Overlay_1` (an `Overlay`), slot padding L16 T0 R0 B0, render translation (0, -68). Child 1 is the page box `SizeBox_41` (`WidthOverride` 580, `bOverride_WidthOverride` on), found by class (the one `SizeBox` child of `group:GetParent()`; it was child 1 before the API added anything). The API reads that width, minus the bar's left padding, as the room for the bar.
 - Tab widths, measured with the menu open (`GetDesiredSize().X`): Player 128, World 128, Recognition 154, Cauldron Recipes 199, a tab titled "Bar" 128. A tab is never narrower than 128. `EntryPanel` is as wide as the sum of its tabs (737 = 128 + 128 + 154 + 199 + 128): no padding between tabs. With the menu closed every size reads 0.
