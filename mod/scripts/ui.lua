@@ -8,6 +8,7 @@ local CLASS = {
   hbox = "/Script/UMG.HorizontalBox",
   scroll = "/Script/UMG.ScrollBox",
   wrap = "/Script/UMG.WrapBox",
+  spacer = "/Script/UMG.Spacer",
   text = "/Script/UMG.TextBlock",
   edit = "/Script/UMG.EditableTextBox",
   tile = "/Game/Blueprints/WBP/Utility/WBP_SimpleItemTile.WBP_SimpleItemTile_C",
@@ -31,6 +32,9 @@ local USER_SPECIFIED, HIT_TEST_INVISIBLE = 7, 3
 -- Small widgets are drawn inside a ScaleBox: the text at 0.7, the buttons at 0.6. The arrow image is larger than
 -- the button's art seems to need, because the scale shrinks it too (64 is a guess: the in-game test checks it).
 local SMALL_TEXT_SCALE, SMALL_BUTTON_SCALE, ARROW_IMAGE_SIZE = 0.7, 0.6, 64.0
+-- Layout: the gap between the panes of page:columns (a guess, the in-game test checks it) and the largest space a
+-- mod can ask for.
+local COLUMN_GAP, MAX_SPACE = 24.0, 400
 
 function ui.isValid(object)
   if object == nil then
@@ -165,9 +169,23 @@ function ui.playerController()
   end
 end
 
+-- The extra check for a widget made now in a scope (see makeContainer): a pane counts how many times it was cleared
+-- (scope.gen), and a widget made in an earlier round is dead. extra (optional) is the widget's own check. A page
+-- has no gen, so it keeps extra as it is (nil stays nil).
+local function withScope(scope, extra)
+  if scope.gen == nil then
+    return extra
+  end
+  local born = scope.gen
+  return function()
+    return scope.gen == born and (extra == nil or extra())
+  end
+end
+
 -- ctx: { panel = the WBP_PlayerGearPanel_C, tree = its WidgetTree, root = the page's VerticalBox,
 --        owner = mod id for logs, log = function(text), clicks = the click router (clicks.lua),
---        onTileCreated = function(class) called after a tile of that class was made }
+--        onTileCreated = function(class) called after a tile of that class was made,
+--        kind = "page" (default) or "section": names the page in error messages }
 -- Returns the page handle for the mod and a session table: session.alive turns false when the page is rebuilt, and
 -- session.inputs lists the inputs whose changes must be polled ({ read, last, onChange }).
 function ui.newPage(ctx)
@@ -188,8 +206,8 @@ function ui.newPage(ctx)
         warned = true
         ctx.log(
           string.format(
-            "mod %s used a %s after its page was rebuilt or closed: the call was ignored. "
-              .. "Handles only work until the next build of the page.",
+            "mod %s used a %s after its page was rebuilt or closed, or its pane was cleared: the call was ignored. "
+              .. "Handles only work until the next build of the page or the next clear of their pane.",
             ctx.owner,
             what
           )
@@ -316,7 +334,8 @@ function ui.newPage(ctx)
 
   -- Registers a click callback for a widget. The callback runs in the router's pcall, never inside the hook's.
   -- isDisabled (optional): function() -> true while the widget is disabled; its clicks are then not routed.
-  local function registerClick(widget, extraCheck, fn, isDisabled)
+  -- tag (optional): the session the entry is filed under, the page's by default (a pane uses its own).
+  local function registerClick(widget, extraCheck, fn, isDisabled, tag)
     local address = addressOf(widget)
     if address == nil then
       ctx.log(string.format("mod %s: a clickable widget has no address, so its clicks will not be noticed", ctx.owner))
@@ -324,7 +343,7 @@ function ui.newPage(ctx)
     end
     ctx.clicks:register(address, {
       owner = ctx.owner,
-      session = session,
+      session = tag or session,
       alive = function()
         return aliveCheck(widget, extraCheck)
       end,
@@ -376,7 +395,7 @@ function ui.newPage(ctx)
   end
 
   -- small: the button is drawn inside a ScaleBox at 0.6.
-  local function makeButton(hbox, label, onClick, extraCheck, small)
+  local function makeButton(hbox, label, onClick, extraCheck, small, tag)
     if type(label) ~= "string" or label == "" then
       error('row:button needs the label as text, like "Next"', 3)
     end
@@ -394,7 +413,7 @@ function ui.newPage(ctx)
     local enabled = true
     registerClick(button, extraCheck, onClick, function()
       return not enabled
-    end)
+    end, tag)
     local live = liveCheck(button, "button", extraCheck)
     return {
       set = function(_, newLabel)
@@ -434,7 +453,7 @@ function ui.newPage(ctx)
   -- An arrow button: the game's button with no text in a small ScaleBox, the game's arrow picture on top (gold,
   -- mirrored for "previous", not hit-testable so the click lands on the button). Without the texture it is a small
   -- button labelled "<" or ">". The handle is { enable } on every path.
-  local function makeArrow(hbox, direction, onClick, extraCheck)
+  local function makeArrow(hbox, direction, onClick, extraCheck, tag)
     if direction ~= "previous" and direction ~= "next" then
       error('row:arrow needs "previous" or "next" as the direction', 3)
     end
@@ -452,7 +471,7 @@ function ui.newPage(ctx)
           )
         )
       end
-      local fallback = makeButton(hbox, direction == "next" and ">" or "<", onClick, extraCheck, true)
+      local fallback = makeButton(hbox, direction == "next" and ">" or "<", onClick, extraCheck, true, tag)
       return {
         enable = function(_, on)
           if type(on) ~= "boolean" then
@@ -482,7 +501,7 @@ function ui.newPage(ctx)
     local enabled = true
     registerClick(button, extraCheck, onClick, function()
       return not enabled
-    end)
+    end, tag)
     local live = liveCheck(button, "arrow", extraCheck)
     return {
       -- Like button:enable: SetIsEnabled, and the picture is grey when off and gold when on.
@@ -518,18 +537,51 @@ function ui.newPage(ctx)
     }
   end
 
-  -- Makes a scroll box fill the rest of the page.
+  -- Makes a scroll box (or a row of columns) fill the rest of its container.
   local function fillSlot(slot, what)
     local okFill = pcall(function()
       slot:SetSize({ Value = 1.0, SizeRule = ui.FILL })
     end)
     if not okFill then
-      ctx.log(string.format("the %s could not be set to fill the page: a long one may not scroll", what))
+      ctx.log(string.format("the %s could not be set to fill the rest of its space: a long one may not scroll", what))
     end
   end
 
-  -- The functions of a horizontal row. extraCheck (optional) says whether the row is still current.
-  local function makeRow(hbox, extraCheck, withButtons)
+  -- Checks the size of a space (a finite number above 0, up to MAX_SPACE). The error points at the mod's call.
+  local function checkSpace(value, fn, what)
+    if type(value) ~= "number" or value ~= value or value <= 0 or value > MAX_SPACE then
+      error(string.format("%s needs the %s as a number above 0 and up to %d, like %s(12)", fn, what, MAX_SPACE, fn), 3)
+    end
+  end
+
+  -- Makes an empty Spacer of width x height and gives it to add(spacer). If the game refuses the spacer, one line
+  -- is logged per page and nothing is added (Spacer is unverified).
+  local spacerWarned = false
+  local function addSpacer(add, width, height)
+    local ok, spacer = pcall(function()
+      local made = ui.construct(CLASS.spacer, ctx.tree)
+      made:SetSize({ X = width + 0.0, Y = height + 0.0 })
+      return made
+    end)
+    if not ok then
+      if not spacerWarned then
+        spacerWarned = true
+        ctx.log(
+          string.format(
+            "mod %s: a space could not be made (unverified call), the layout has no gap there: %s",
+            ctx.owner,
+            tostring(spacer)
+          )
+        )
+      end
+      return
+    end
+    add(spacer)
+  end
+
+  -- The functions of a horizontal row. extraCheck (optional) says whether the row is still current. tag is the
+  -- session its clicks are filed under (the page's when nil).
+  local function makeRow(hbox, extraCheck, withButtons, tag)
     local rowLive = liveCheck(hbox, "row", extraCheck)
     local row = {}
     -- opts (optional): { size = "small" } shows the text at 0.7 of its size.
@@ -571,8 +623,18 @@ function ui.newPage(ctx)
       centerSlot(hbox:AddChildToHorizontalBox(tile))
       registerClick(tile, extraCheck, function()
         onClick(name)
-      end)
+      end, nil, tag)
       notifyTileCreated(class)
+    end
+    -- An empty gap between two things of the row: width is above 0 and up to 400 (Spacer is unverified).
+    function row.space(_, width)
+      if not rowLive() then
+        return
+      end
+      checkSpace(width, "row:space", "width")
+      addSpacer(function(spacer)
+        hbox:AddChildToHorizontalBox(spacer)
+      end, width, 0)
     end
     if withButtons then
       -- opts (optional): { small = true } shows a smaller button (a ScaleBox at 0.6).
@@ -583,7 +645,7 @@ function ui.newPage(ctx)
         if opts ~= nil and (type(opts) ~= "table" or (opts.small ~= nil and type(opts.small) ~= "boolean")) then
           error("row:button takes an optional table { small = true or false }", 2)
         end
-        local handle = makeButton(hbox, label, onClick, extraCheck, opts and opts.small)
+        local handle = makeButton(hbox, label, onClick, extraCheck, opts and opts.small, tag)
         return handle -- not a tail call: a tail call would drop the mod's frame from the error level
       end
       -- direction is "previous" or "next".
@@ -591,24 +653,61 @@ function ui.newPage(ctx)
         if not rowLive() then
           return inertArrow()
         end
-        local handle = makeArrow(hbox, direction, onClick, extraCheck)
+        local handle = makeArrow(hbox, direction, onClick, extraCheck, tag)
         return handle -- not a tail call: a tail call would drop the mod's frame from the error level
       end
     end
     return row
   end
 
-  -- What a dead page or list hands out: the same methods as a live row, doing nothing.
+  -- What a dead page, pane or list hands out: the same methods as a live one, doing nothing.
   local inertRow = {
     text = inertText,
     item = function() end,
+    space = function() end,
   }
   local inertPageRow = {
     text = inertText,
     item = inertRow.item,
+    space = inertRow.space,
     button = inertButton,
     arrow = inertArrow,
   }
+  local function inertInput()
+    return {
+      get = function()
+        return ""
+      end,
+      set = function() end,
+    }
+  end
+  local function inertList()
+    return {
+      clear = function() end,
+      row = function()
+        return inertRow
+      end,
+    }
+  end
+  local function inertGrid()
+    return {
+      clear = function() end,
+      tile = function() end,
+    }
+  end
+  local function inertPane()
+    return {
+      text = inertText,
+      input = inertInput,
+      row = function()
+        return inertPageRow
+      end,
+      list = inertList,
+      grid = inertGrid,
+      space = function() end,
+      clear = function() end,
+    }
+  end
   local pageWarned = false
   -- A page handle kept past the next build of its page does nothing (and says so once).
   local function pageAlive()
@@ -628,207 +727,319 @@ function ui.newPage(ctx)
     return false
   end
 
-  local page = {}
+  -- The functions that put things in a vertical box: text, input, row, list, grid and space. The page uses them on
+  -- its own box and every pane of page:columns on its own. kind ("page" or "pane") only names the function in error
+  -- messages. scope says what the widgets made now belong to: { tag = the session their clicks are filed under } and,
+  -- for a pane, gen (how many times it was cleared), so that a widget made before pane:clear() is dead afterwards.
+  local function makeContainer(root, scope, kind)
+    local c = {}
 
-  -- opts (optional): { wrap = true } makes a long line wrap at the panel's edge instead of running past it.
-  -- { size = "small" } shows the text at 0.7 of its size, left-aligned (it cannot be combined with wrap).
-  function page.text(_, str, opts)
-    if not pageAlive() then
-      return inertText()
-    end
-    local wrap, small = textOptions(opts, "page:text", true)
-    return makeText(str, function(widget, isSmall)
-      local slot = ctx.root:AddChildToVerticalBox(widget)
-      if isSmall then
-        -- A ScaleBox in a vertical box is centered by default: left-align it (unverified call).
-        local ok, problem = pcall(function()
-          slot:SetHorizontalAlignment(H_LEFT)
-        end)
-        if not ok then
-          ctx.log(
-            string.format(
-              "mod %s: a small text could not be left-aligned (unverified call), it may sit in the middle: %s",
-              ctx.owner,
-              tostring(problem)
+    -- opts (optional): { wrap = true } makes a long line wrap at the panel's edge instead of running past it.
+    -- { size = "small" } shows the text at 0.7 of its size, left-aligned (it cannot be combined with wrap).
+    function c.text(_, str, opts)
+      if not pageAlive() then
+        return inertText()
+      end
+      local wrap, small = textOptions(opts, kind .. ":text", true)
+      return makeText(str, function(widget, isSmall)
+        local slot = root:AddChildToVerticalBox(widget)
+        if isSmall then
+          -- A ScaleBox in a vertical box is centered by default: left-align it (verified in game for the page).
+          local ok, problem = pcall(function()
+            slot:SetHorizontalAlignment(H_LEFT)
+          end)
+          if not ok then
+            ctx.log(
+              string.format(
+                "mod %s: a small text could not be left-aligned, it may sit in the middle: %s",
+                ctx.owner,
+                tostring(problem)
+              )
             )
-          )
-        end
-      end
-    end, nil, wrap, small)
-  end
-
-  -- spec: { hint = text shown while empty, onChange = function(text) }
-  function page.input(_, spec)
-    if not pageAlive() then
-      return {
-        get = function()
-          return ""
-        end,
-        set = function() end,
-      }
-    end
-    spec = spec or {}
-    if type(spec) ~= "table" or (spec.onChange ~= nil and type(spec.onChange) ~= "function") then
-      error("page:input takes an optional table { hint = text, onChange = function(text) end }", 2)
-    end
-    local box = ui.construct(CLASS.edit, ctx.tree)
-    if spec.hint then
-      local ok = pcall(function() -- unverified: SetHintText
-        box:SetHintText(FText(tostring(spec.hint)))
-      end)
-      if not ok then
-        ctx.log("the input hint could not be set (unverified call SetHintText): the box is shown without it")
-      end
-    end
-    ctx.root:AddChildToVerticalBox(box)
-    local live = liveCheck(box, "input")
-    local function read()
-      return box:GetText():ToString() -- unverified: GetText
-    end
-    local record
-    if spec.onChange then
-      local okRead, initial = pcall(read)
-      record = { read = read, last = okRead and initial or "", onChange = spec.onChange, owner = ctx.owner }
-      session.inputs[#session.inputs + 1] = record
-    end
-    return {
-      get = function()
-        if live() then
-          return read()
-        end
-        return ""
-      end,
-      set = function(_, newText)
-        if live() then
-          box:SetText(FText(tostring(newText)))
-          if record then
-            -- A change made by the mod itself is not reported to onChange.
-            local ok, current = pcall(read)
-            record.last = ok and current or record.last
           end
         end
-      end,
-    }
-  end
-
-  -- A horizontal row on the page itself: text, item tiles and buttons side by side.
-  function page.row()
-    if not pageAlive() then
-      return inertPageRow
+      end, withScope(scope), wrap, small)
     end
-    local hbox = ui.construct(CLASS.hbox, ctx.tree)
-    ctx.root:AddChildToVerticalBox(hbox)
-    return makeRow(hbox, nil, true)
-  end
 
-  -- A scrolling list of rows (ScrollBox, HorizontalBox rows and the Fill slot are verified in game).
-  function page.list()
-    if not pageAlive() then
+    -- spec: { hint = text shown while empty, onChange = function(text) }
+    function c.input(_, spec)
+      if not pageAlive() then
+        return inertInput()
+      end
+      spec = spec or {}
+      if type(spec) ~= "table" or (spec.onChange ~= nil and type(spec.onChange) ~= "function") then
+        error(kind .. ":input takes an optional table { hint = text, onChange = function(text) end }", 2)
+      end
+      local box = ui.construct(CLASS.edit, ctx.tree)
+      if spec.hint then
+        local ok = pcall(function() -- unverified: SetHintText
+          box:SetHintText(FText(tostring(spec.hint)))
+        end)
+        if not ok then
+          ctx.log("the input hint could not be set (unverified call SetHintText): the box is shown without it")
+        end
+      end
+      root:AddChildToVerticalBox(box)
+      local scopeCheck = withScope(scope)
+      local live = liveCheck(box, "input", scopeCheck)
+      local function read()
+        return box:GetText():ToString() -- unverified: GetText
+      end
+      local record
+      if spec.onChange then
+        local okRead, initial = pcall(read)
+        local onChange = spec.onChange
+        if scopeCheck then
+          -- A poll that is already running may still reach the input of a pane that was cleared meanwhile.
+          onChange = function(text)
+            if scopeCheck() then
+              spec.onChange(text)
+            end
+          end
+        end
+        record = {
+          read = read,
+          last = okRead and initial or "",
+          onChange = onChange,
+          owner = ctx.owner,
+          scope = scopeCheck and scope or nil,
+        }
+        session.inputs[#session.inputs + 1] = record
+      end
       return {
-        clear = function() end,
-        row = function()
-          return inertRow
+        get = function()
+          if live() then
+            return read()
+          end
+          return ""
+        end,
+        set = function(_, newText)
+          if live() then
+            box:SetText(FText(tostring(newText)))
+            if record then
+              -- A change made by the mod itself is not reported to onChange.
+              local ok, current = pcall(read)
+              record.last = ok and current or record.last
+            end
+          end
         end,
       }
     end
-    local scroll = ui.construct(CLASS.scroll, ctx.tree)
-    local slot = ctx.root:AddChildToVerticalBox(scroll)
-    fillSlot(slot, "list")
-    local generation = 0
-    local live = liveCheck(scroll, "list")
-    local list = {}
 
-    function list.clear()
-      if live() then
-        scroll:ClearChildren()
-        generation = generation + 1 -- rows made before this point are dead
-      end
-    end
-
-    function list.row()
-      if not live() then
-        return inertRow
+    -- A horizontal row: text, item tiles and buttons side by side.
+    function c.row()
+      if not pageAlive() then
+        return inertPageRow
       end
       local hbox = ui.construct(CLASS.hbox, ctx.tree)
-      scroll:AddChild(hbox)
-      local born = generation
-      local function sameGeneration()
-        return born == generation
-      end
-      return makeRow(hbox, sameGeneration, false)
+      root:AddChildToVerticalBox(hbox)
+      return makeRow(hbox, withScope(scope), true, scope.tag)
     end
 
-    return list
-  end
-
-  -- A grid of clickable item tiles that wraps like rows of text and scrolls (WrapBox in a ScrollBox, verified in
-  -- game for 48 tiles). WrapBox:ClearChildren is not verified: a failure is logged and the old tiles stay.
-  function page.grid()
-    if not pageAlive() then
-      return {
-        clear = function() end,
-        tile = function() end,
-      }
-    end
-    local scroll = ui.construct(CLASS.scroll, ctx.tree)
-    local slot = ctx.root:AddChildToVerticalBox(scroll)
-    fillSlot(slot, "grid")
-    local wrap = ui.construct(CLASS.wrap, ctx.tree)
-    scroll:AddChild(wrap)
-    local generation = 0
-    local addresses = {} -- clickable tiles of the current generation
-    local live = liveCheck(scroll, "grid")
-    local grid = {}
-
-    function grid.clear()
-      if not live() then
+    -- Empty vertical space: height is above 0 and up to 400 (Spacer is unverified).
+    function c.space(_, height)
+      if not pageAlive() then
         return
       end
-      local ok, problem = pcall(function()
-        wrap:ClearChildren()
-      end)
-      if not ok then
-        ctx.log(
-          string.format("mod %s: grid:clear failed, the old tiles stay (unverified call): %s", ctx.owner, problem)
-        )
-        return
-      end
-      generation = generation + 1 -- tiles made before this point are dead
-      for _, address in ipairs(addresses) do
-        ctx.clicks:forget(address)
-      end
-      addresses = {}
+      checkSpace(height, kind .. ":space", "height")
+      addSpacer(function(spacer)
+        root:AddChildToVerticalBox(spacer)
+      end, 0, height)
     end
 
-    -- spec (optional): { onClick = function(name) }. The tile count is not shown in the TAB menu, so there is none.
-    function grid.tile(_, name, spec)
-      if not live() then
-        return
+    -- A scrolling list of rows (ScrollBox, HorizontalBox rows and the Fill slot are verified in game).
+    function c.list()
+      if not pageAlive() then
+        return inertList()
       end
-      if type(name) ~= "string" or name == "" then
-        error('grid:tile needs the item name as text, like "GentianNectar"', 2)
-      end
-      if spec ~= nil and (type(spec) ~= "table" or (spec.onClick ~= nil and type(spec.onClick) ~= "function")) then
-        error("grid:tile takes an optional table { onClick = function(name) end }", 2)
-      end
-      local tile, class = createRecipeTile(name)
-      wrap:AddChildToWrapBox(tile)
-      local onClick = spec and spec.onClick
-      if onClick then
-        local born = generation
-        local address = registerClick(tile, function()
-          return born == generation
-        end, function()
-          onClick(name)
-        end)
-        if address then
-          addresses[#addresses + 1] = address
+      local scroll = ui.construct(CLASS.scroll, ctx.tree)
+      local slot = root:AddChildToVerticalBox(scroll)
+      fillSlot(slot, "list")
+      local generation = 0
+      local live = liveCheck(scroll, "list", withScope(scope))
+      local list = {}
+
+      function list.clear()
+        if live() then
+          scroll:ClearChildren()
+          generation = generation + 1 -- rows made before this point are dead
         end
       end
-      notifyTileCreated(class)
+
+      function list.row()
+        if not live() then
+          return inertRow
+        end
+        local hbox = ui.construct(CLASS.hbox, ctx.tree)
+        scroll:AddChild(hbox)
+        local born = generation
+        local function sameGeneration()
+          return born == generation
+        end
+        return makeRow(hbox, withScope(scope, sameGeneration), false, scope.tag)
+      end
+
+      return list
     end
 
-    return grid
+    -- A grid of clickable item tiles that wraps like rows of text and scrolls (WrapBox in a ScrollBox, verified in
+    -- game for 48 tiles and for clear).
+    function c.grid()
+      if not pageAlive() then
+        return inertGrid()
+      end
+      local scroll = ui.construct(CLASS.scroll, ctx.tree)
+      local slot = root:AddChildToVerticalBox(scroll)
+      fillSlot(slot, "grid")
+      local wrap = ui.construct(CLASS.wrap, ctx.tree)
+      scroll:AddChild(wrap)
+      local generation = 0
+      local addresses = {} -- clickable tiles of the current generation
+      local live = liveCheck(scroll, "grid", withScope(scope))
+      local grid = {}
+
+      function grid.clear()
+        if not live() then
+          return
+        end
+        local ok, problem = pcall(function()
+          wrap:ClearChildren()
+        end)
+        if not ok then
+          ctx.log(string.format("mod %s: grid:clear failed, the old tiles stay: %s", ctx.owner, problem))
+          return
+        end
+        generation = generation + 1 -- tiles made before this point are dead
+        for _, address in ipairs(addresses) do
+          ctx.clicks:forget(address)
+        end
+        addresses = {}
+      end
+
+      -- spec (optional): { onClick = function(name) }. The tile count is not shown in the TAB menu, so there is none.
+      function grid.tile(_, name, spec)
+        if not live() then
+          return
+        end
+        if type(name) ~= "string" or name == "" then
+          error('grid:tile needs the item name as text, like "GentianNectar"', 2)
+        end
+        if spec ~= nil and (type(spec) ~= "table" or (spec.onClick ~= nil and type(spec.onClick) ~= "function")) then
+          error("grid:tile takes an optional table { onClick = function(name) end }", 2)
+        end
+        local tile, class = createRecipeTile(name)
+        wrap:AddChildToWrapBox(tile)
+        local onClick = spec and spec.onClick
+        if onClick then
+          local born = generation
+          local address = registerClick(
+            tile,
+            withScope(scope, function()
+              return born == generation
+            end),
+            function()
+              onClick(name)
+            end,
+            nil,
+            scope.tag
+          )
+          if address then
+            addresses[#addresses + 1] = address
+          end
+        end
+        notifyTileCreated(class)
+      end
+
+      return grid
+    end
+
+    return c
+  end
+
+  local page = makeContainer(ctx.root, { tag = session }, ctx.kind or "page")
+
+  -- Splits the rest of the page into side-by-side panes whose widths are relative: columns({ 1, 2 }) is a third and
+  -- two thirds. Returns one pane per entry. A pane has text, input, row, list, grid and space like the page, and
+  -- clear(), which removes only what that pane holds. HorizontalBox slot SetSize and SetPadding are unverified: a
+  -- refusal is logged once and the panes share the width equally, without a gap.
+  function page.columns(_, widths)
+    local usage = "page:columns needs an array of 2 or more widths above 0, like page:columns({ 1, 2 })"
+    if type(widths) ~= "table" or #widths < 2 then
+      error(usage, 2)
+    end
+    for i = 1, #widths do
+      local w = widths[i]
+      if type(w) ~= "number" or w ~= w or w <= 0 or w == math.huge then
+        error(string.format("%s (entry %d is %s)", usage, i, tostring(w)), 2)
+      end
+    end
+    if not pageAlive() then
+      local panes = {}
+      for i = 1, #widths do
+        panes[i] = inertPane()
+      end
+      return panes
+    end
+    local hbox = ui.construct(CLASS.hbox, ctx.tree)
+    fillSlot(ctx.root:AddChildToVerticalBox(hbox), "columns")
+    local slotWarned = false
+    local panes = {}
+    for i = 1, #widths do
+      local vbox = ui.construct(CLASS.vbox, ctx.tree)
+      local slot = hbox:AddChildToHorizontalBox(vbox)
+      local ok, problem = pcall(function()
+        slot:SetSize({ Value = widths[i] + 0.0, SizeRule = ui.FILL })
+        if i > 1 then
+          slot:SetPadding({ Left = COLUMN_GAP, Top = 0.0, Right = 0.0, Bottom = 0.0 })
+        end
+      end)
+      if not ok and not slotWarned then
+        slotWarned = true
+        ctx.log(
+          string.format(
+            "mod %s: the columns could not be sized (unverified call), they may share the width equally: %s",
+            ctx.owner,
+            tostring(problem)
+          )
+        )
+      end
+      -- Each pane is its own scope: pane:clear() ends it and starts the next one.
+      local scope = { tag = { parent = session }, gen = 0 }
+      local pane = makeContainer(vbox, scope, "pane")
+      -- Removes everything in this pane and nothing else. Handles made in the pane before are dead afterwards and
+      -- their clicks are dropped, so it is safe to call from a click callback of one of this pane's own tiles.
+      function pane.clear()
+        if not pageAlive() then
+          return
+        end
+        local okClear, clearProblem = pcall(function()
+          vbox:ClearChildren()
+        end)
+        if not okClear then
+          ctx.log(
+            string.format(
+              "mod %s: pane:clear failed, the pane keeps what it had (unverified call): %s",
+              ctx.owner,
+              tostring(clearProblem)
+            )
+          )
+          return
+        end
+        ctx.clicks:dropSession(scope.tag)
+        scope.tag = { parent = session }
+        scope.gen = scope.gen + 1
+        -- A new list, not removals in place: the poll may be walking the old one.
+        local kept = {}
+        for _, input in ipairs(session.inputs) do
+          if input.scope ~= scope then
+            kept[#kept + 1] = input
+          end
+        end
+        session.inputs = kept
+      end
+      panes[i] = pane
+    end
+    return panes
   end
 
   return page, session

@@ -27,7 +27,7 @@ The same mechanism as the TAB menu ([tab-menu.md](tab-menu.md)), done after `BP_
 
 Result in the probe: the fifth tab showed, clicking it showed the page, the other tabs kept working, and reopening the menu kept one tab. A page's text sat on the panel's top-left frame corner, so the API pads its pages (`SetPadding` on the slot returned by `AddChild`; **unverified**, the values are a first guess: left 24, top 20, right 24, bottom 16). The API logs once if the call fails.
 
-More than one tab in this menu is **unverified**. The API adds one page per tab in order, which is the page the game's `tab - 1` rule shows, but only one extra tab was tested.
+Two added tabs in this menu are **verified** (2026-10-23, game 1.1.5024, API 0.1.1: Cauldron Recipes and a layout probe, log "added 2 tab(s) ... pages 5"): each opens its own page. More than two is unverified.
 
 The highlighted tab after the bar is rebuilt is restored with `SetActive(panel.CurrentActivePage)`. The probe used `CurrentActivePage` this way. Whether it is always the index of the highlighted tab (for example while Goods, Stats or Ledger is showing) is **not fully verified**.
 
