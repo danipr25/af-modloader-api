@@ -104,9 +104,23 @@ Verified in game with a throwaway mod on a tab in the V menu (game 1.1.5024, UE4
 
 ### Buttons and page padding
 
-- `ScaleBox` + `WBP_ButtonBase_C`, text "+ Add": desired sizes 120 x 30 at 0.6, 140 x 35 at 0.7, 160 x 40 at 0.8, 200 x 50 at 1.0 with padding 8. `button.ContentBorder:SetPadding({ Left = 10, Top = 0, Right = 10, Bottom = 0 })` did not change `GetDesiredSize` (probably a minimum width in the button style) but looked narrower on screen. Picked by eye: 0.7 with padding 10.
+- `ScaleBox` + `WBP_ButtonBase_C`, text "+ Add": desired sizes 120 x 30 at 0.6, 140 x 35 at 0.7, 160 x 40 at 0.8, 200 x 50 at 1.0 with padding 8. `button.ContentBorder:SetPadding({ Left = 10, Top = 0, Right = 10, Bottom = 0 })` did not change `GetDesiredSize` (probably a minimum width in the button style) but looked narrower on screen. Picked by eye: 0.7 with padding 10 (the API later raised it to 16, see below).
 - V menu page padding: read as left 24, top 20, right 24, bottom 16. With top 20 the first line sat under the frame's top-left ornament. Picked by eye: left 40, top 36.
 
 ### Text color (not changed by the API)
 
 Every item sheet text (`Txt_UsedInTitle`, `Txt_ItemName`, `Txt_ItemDesc`, `Txt_ItemType`, `Txt_ApproachesTitle`) and the default CommonUI text styles read `ColorAndOpacity` R 0.022, G 0.033, B 0.053 (linear, sRGB #293341), `ColorUseRule` 0. The game's panels draw dark text; white, gold or cream texts of a mod clash with them. The API leaves text colors to the mod (`text:color`).
+
+### Through the API 0.1.2 (in-game test)
+
+Verified in game with a test mod (`api-look-test`) and Cauldron Recipes 0.1.1 on the API 0.1.2 test build (2026-10-23, game 1.1.5024, UE4SS experimental). The log had no "could not" or "not found" line.
+
+- Page padding 40 / 36 / 24 / 16 clears the corner ornament.
+- `page:columns({ 1, 2 }, { divider = true })`: the line shows between the panes.
+- `pane:divider()` plain (narrow pane) and with a heading; `row:divider()` in list rows and pane rows; three Advanced groups per row fit in the two-thirds pane with the padding of 40.
+- `section:divider("Cauldron")` on the Goods item sheet fits.
+- The game's scrollbar on a list and a grid, also in the Recipes tab (the TAB menu was opened before the V menu).
+- The game's search box: hint, `set("abc")` then `get()` returns "abc", `onChange` fires on each typed change, `set("")` from a button.
+- Small buttons click. "Show advanced" filled its button at padding 10, so the API uses 16; 16 looked right.
+
+Still not verified: the `LoadAsset` fallback when a style or widget class is not loaded; `ShowText` alone (without `SetText` on the inner text) for a heading; the column divider and the scrollbar in the TAB menu.
