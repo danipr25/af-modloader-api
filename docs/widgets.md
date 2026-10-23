@@ -51,6 +51,17 @@ Verified in game with a throwaway probe (layout probe 2, 2026-10-22, game 1.1.50
 - Rejected: a `SizeBox` of 64 x 64 around the button squashes the button's art.
 - `HorizontalBoxSlot:SetVerticalAlignment(2)` (center) on every child of a row puts a text next to a button or an item tile at mid height.
 
+## Columns and spacers (API 0.1.1, verified in the V menu)
+
+Verified in game on 2026-10-23 (game 1.1.5024, V menu, throwaway probe with the API 0.1.1 branch build):
+
+- `page:columns(widths)`: a `HorizontalBox` added to the page's `VerticalBox` with a Fill slot, and a `VerticalBox` per pane added with `AddChildToHorizontalBox`. Each pane's slot gets `SetSize({ Value = weight, SizeRule = Fill(1) })`, and every pane after the first `SetPadding({ Left = 24 })` for the gap. All numbers are sent as floats.
+- `pane:clear()`: `VerticalBox:ClearChildren()` on the pane's box.
+- Spaces: `/Script/UMG.Spacer` with `SetSize({ X, Y })`, added to a `VerticalBox` (`page:space`) or a `HorizontalBox` (`row:space`).
+- Results: two panes at a third and two thirds with the 24 gap; 4 tiles per row in the narrow grid; both scroll boxes scroll independently; clicks route in both panes, after `pane:clear()` and after `tab:refresh()`; clearing the right pane from left-pane tiles gave no flicker and left the left grid's scroll alone; small text is left-aligned; page and row spaces show.
+- Content wider than its pane is cut silently (the scroll box clips). In the two-thirds pane a list row of three groups of 3 tiles joined by " + " with `row:space(32)` between groups was wider than the pane and lost its third group. One group of 3 tiles with 2 " + " texts takes about a third of that pane, and a 32 gap does not visually separate groups of tiles.
+- Not verified: clearing a pane from a click on a tile inside that same pane (the probe cleared the right pane only from left-pane tiles), and columns and spaces in the TAB menu.
+
 ## Seen in the test
 
 - A long `TextBlock` line does not wrap: it runs past the panel's edge. `SetAutoWrapText(true)` makes it wrap at the panel's edge (probe and API 0.1.3 template, 2026-10-21, both on a shown text and set at build time).
