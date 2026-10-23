@@ -73,11 +73,12 @@ function Sections:route(address)
   self.clicks:route(address, true)
 end
 
--- What a mod's build function receives: text and rows with text and buttons, nothing else.
+-- What a mod's build function receives: text, spaces, dividers and rows with text and buttons, nothing else.
 local function sectionHandle(page)
   local section = {}
   section.text = page.text
   section.space = page.space
+  section.divider = page.divider
   function section.row()
     local row = page:row()
     return registry.readonly({ text = row.text, button = row.button }, "a section row")

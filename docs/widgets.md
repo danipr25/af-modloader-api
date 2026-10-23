@@ -46,7 +46,7 @@ A `WrapBox` (`/Script/UMG.WrapBox`, created with `StaticConstructObject` and out
 Verified in game with a throwaway probe (layout probe 2, 2026-10-22, game 1.1.5024). All widgets were created with `StaticConstructObject` and outer `panel.WidgetTree`; buttons with `Create`.
 
 - A `ScaleBox` (`/Script/UMG.ScaleBox`) with `SetStretch(7)` (UserSpecified) and `SetUserSpecifiedScale(0.7)` around a `TextBlock` shows the text at 0.7 and keeps its real layout size. Unlike `SetRenderScale`, which keeps the layout size of the unscaled widget, the box takes the room of the scaled child. Added to a page's `VerticalBox` it was centered horizontally (the slot default), so the page text is left-aligned with `SetHorizontalAlignment(1)` on its slot. That call was not in the probe; it is verified through the API (2026-10-22, game 1.1.5024, API 0.1.5): the small text starts at the left edge. The API versions named here are development builds from before the first public release (see [Versions](api.md#versions)).
-- A `ScaleBox` at 0.6 around a `WBP_ButtonBase_C` gives a smaller button in the game's style. Clicks arrive through `HandleButtonClicked` with the button's address, as usual.
+- A `ScaleBox` at 0.6 around a `WBP_ButtonBase_C` gives a smaller button in the game's style (the API used 0.6 until 0.1.1; 0.1.2 uses 0.7, see "Look probe" below). Clicks arrive through `HandleButtonClicked` with the button's address, as usual.
 - Arrow button: `ScaleBox` 0.6 > `Overlay` [ `WBP_ButtonBase_C` with an empty text, `Image` with `T_UI_RightArrow` (`SetBrushFromTexture`, `SetDesiredSizeOverride`, gold `SetColorAndOpacity`, `HitTestInvisible`) centered in the overlay slot ]. Clicks arrive. An image of 40 looked tiny inside the scaled button, so the API uses 64 (before scaling): verified in game through the API (2026-10-22, game 1.1.5024, API 0.1.5), the arrow looks right.
 - Rejected: a `SizeBox` of 64 x 64 around the button squashes the button's art.
 - `HorizontalBoxSlot:SetVerticalAlignment(2)` (center) on every child of a row puts a text next to a button or an item tile at mid height.
@@ -60,7 +60,8 @@ Verified in game on 2026-10-23 (game 1.1.5024, V menu, throwaway probe with the 
 - Spaces: `/Script/UMG.Spacer` with `SetSize({ X, Y })`, added to a `VerticalBox` (`page:space`) or a `HorizontalBox` (`row:space`).
 - Results: two panes at a third and two thirds with the 24 gap; 4 tiles per row in the narrow grid; both scroll boxes scroll independently; clicks route in both panes, after `pane:clear()` and after `tab:refresh()`; clearing the right pane from left-pane tiles gave no flicker and left the left grid's scroll alone; small text is left-aligned; page and row spaces show.
 - Content wider than its pane is cut silently (the scroll box clips). In the two-thirds pane a list row of three groups of 3 tiles joined by " + " with `row:space(32)` between groups was wider than the pane and lost its third group. One group of 3 tiles with 2 " + " texts takes about a third of that pane, and a 32 gap does not visually separate groups of tiles.
-- Not verified: clearing a pane from a click on a tile inside that same pane (the probe cleared the right pane only from left-pane tiles), and columns and spaces in the TAB menu.
+- Clearing a pane from a click on a button inside that same pane, with an input in the pane, was verified later through the API 0.1.2 and Cauldron Recipes (2026-10-23, game 1.1.5024): no flicker, the input keeps filtering.
+- Not verified: columns and spaces in the TAB menu.
 
 ## Seen in the test
 
@@ -69,3 +70,58 @@ Verified in game on 2026-10-23 (game 1.1.5024, V menu, throwaway probe with the 
 - **Never call `TextBlock:SetFont` with a Lua table: it crashes the game** (access violation). The API does not offer font changes. The default text font is size 24, typeface "Bold".
 - A widget set to `Collapsed` measures 0 in `GetDesiredSize` and takes no room. After a change, `ForceLayoutPrepass()` on a parent updates the sizes in the same call (game 1.1.5024, probe 2026-10-22).
 - `SetRenderScale` shrinks the drawing but keeps the layout size, so it does not make room. `SetShadowColorAndOpacity` with `SetShadowOffset` works, but the game's panel texts have no shadow. Neither is used.
+
+## Look probe: dividers, scrollbar, search box, buttons (API 0.1.2)
+
+Verified in game with a throwaway mod on a tab in the V menu (game 1.1.5024, UE4SS experimental, three rounds on 2026-10-23, API 0.1.1 build). The game data came from the FModel export (1.0.4963) and was re-checked by the probe. Widgets were made with `StaticConstructObject` and outer `panel.WidgetTree`, the game's own with `WidgetBlueprintLibrary:Create`.
+
+### Horizontal divider: `WBP_EntryDivider_C`
+
+- Path: `/Game/Blueprints/WBP/CatalogPanel/WBP_EntryDivider.WBP_EntryDivider_C`, the divider the V menu uses between categories. `Create` works and the class is loaded (no crash).
+- Plain it measures 1020 x 16 (two halves with diamond ends); with a heading 1133 x 44.
+- Heading: round 1 set `divider.Txt_BuildOptionType:SetText(...)` and the divider showed "Logistics", the blueprint's default `ShowText`, written back on `PreConstruct`. **Failed.** Round 2: `divider.ShowText = FText("Cauldron")` and `divider.Txt_BuildOptionType:SetText(FText("Cauldron"))` together, before adding the divider, work (the API sets both; whether `ShowText` alone is enough was not tried). The text is the game's dark color.
+- No heading: `divider.Txt_BuildOptionType:SetVisibility(1)` (Collapsed) gives a plain line.
+
+### Solid lines: `Image` + `SizeBox`
+
+- An `Image` with no texture draws white. `SetColorAndOpacity` tints it, `SetVisibility(3)` makes it ignore the mouse.
+- **Failed:** `Image:SetDesiredSizeOverride` is ignored: lines came out about 40 thick, horizontal and vertical.
+- Works: the `Image` inside a `SizeBox` (`/Script/UMG.SizeBox`) with `SetHeightOverride(2.0)` (horizontal) or `SetWidthOverride(2.0)` (vertical). A vertical one in a `HorizontalBox` slot with `SetVerticalAlignment(0)` (Fill) spans the row, with a `Spacer` of 16 on each side. A horizontal one in a `VerticalBox` slot with `SetHorizontalAlignment(0)` fills the width.
+- Color: the divider art is sRGB #7A6C5F. As a linear value (0.195, 0.152, 0.114) it read as a faint dark band; used as is (0.478, 0.424, 0.373) it is a light line, which is the one picked.
+- Three Advanced recipes per row (3 groups with lines) fit in the two-thirds pane: 832 x 100; two Normal ones 803 x 100.
+
+### Scrollbar
+
+- The live item sheet is destroyed when the V menu closes, but the class's widget-tree templates were still found afterwards (the class was loaded in that session; if the owning class is not loaded yet, for example before the V menu was ever opened, the API loads it first with `LoadAsset`, which is not verified): `StaticFindObject("/Game/Blueprints/WBP/CatalogPanel/WBP_CatalogContent.WBP_CatalogContent_C:WidgetTree.ScrollBox_40")` finds one.
+- Works: `list.WidgetBarStyle = template.WidgetBarStyle` and `list.ScrollbarThickness = template.ScrollbarThickness` on a new `ScrollBox` **before** adding it: the game's scrollbar (frame and thumb, thickness 22), no crash.
+- Partial: the same copy after `AddChild` applied only partly (a thin track, no frame). So the API copies before adding.
+- `FindFirstOf("WBP_CatalogContent_C")` gave nothing usable (the live widget is gone while the menu is closed), hence the template.
+
+### Search box
+
+- `StaticFindObject("/Game/Blueprints/WBP/BuildOptionsPanel/WBP_BuildPanelNew.WBP_BuildPanelNew_C:WidgetTree.Edit_BlueprintSearch")` finds a template (`FindFirstOf("WBP_BuildPanelNew_C")` found no live panel).
+- Works: `box.WidgetStyle = template.WidgetStyle` on a new `EditableTextBox` before adding it, then `SetHintText`: the game's brown rounded box with a dark hint, no crash. Typing, `GetText` and the polling with this style were not tried.
+- Both copies (scrollbar and search) ran in one session without a crash. Structs are only ever copied from a game widget, never built from a Lua table.
+
+### Buttons and page padding
+
+- `ScaleBox` + `WBP_ButtonBase_C`, text "+ Add": desired sizes 120 x 30 at 0.6, 140 x 35 at 0.7, 160 x 40 at 0.8, 200 x 50 at 1.0 with padding 8. `button.ContentBorder:SetPadding({ Left = 10, Top = 0, Right = 10, Bottom = 0 })` did not change `GetDesiredSize` (probably a minimum width in the button style) but looked narrower on screen. Picked by eye: 0.7 with padding 10 (the API later raised it to 16, see below).
+- V menu page padding: read as left 24, top 20, right 24, bottom 16. With top 20 the first line sat under the frame's top-left ornament. Picked by eye: left 40, top 36.
+
+### Text color (not changed by the API)
+
+Every item sheet text (`Txt_UsedInTitle`, `Txt_ItemName`, `Txt_ItemDesc`, `Txt_ItemType`, `Txt_ApproachesTitle`) and the default CommonUI text styles read `ColorAndOpacity` R 0.022, G 0.033, B 0.053 (linear, sRGB #293341), `ColorUseRule` 0. The game's panels draw dark text; white, gold or cream texts of a mod clash with them. The API leaves text colors to the mod (`text:color`).
+
+### Through the API 0.1.2 (in-game test)
+
+Verified in game with a test mod (`api-look-test`) and Cauldron Recipes 0.1.1 on the API 0.1.2 test build (2026-10-23, game 1.1.5024, UE4SS experimental). The log had no "could not" or "not found" line.
+
+- Page padding 40 / 36 / 24 / 16 clears the corner ornament.
+- `page:columns({ 1, 2 }, { divider = true })`: the line shows between the panes.
+- `pane:divider()` plain (narrow pane) and with a heading; `row:divider()` in list rows and pane rows; three Advanced groups per row fit in the two-thirds pane with the padding of 40.
+- `section:divider("Cauldron")` on the Goods item sheet fits.
+- The game's scrollbar on a list and a grid, also in the Recipes tab (the TAB menu was opened before the V menu).
+- The game's search box: hint, `set("abc")` then `get()` returns "abc", `onChange` fires on each typed change, `set("")` from a button.
+- Small buttons click. "Show advanced" filled its button at padding 10, so the API uses 16; 16 looked right.
+
+Still not verified: the `LoadAsset` fallback when a style or widget class is not loaded; `ShowText` alone (without `SetText` on the inner text) for a heading; the column divider and the scrollbar in the TAB menu.

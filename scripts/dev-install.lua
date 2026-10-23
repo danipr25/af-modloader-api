@@ -178,4 +178,4 @@ if withTemplate then
   copyModFolder(TEMPLATE_SOURCE, modsDir, TEMPLATE_FOLDER)
 end
 
-say("Done. Start the game and look for '[af-modloader-api] AF Mod Loader API 0.1.1 loaded' in UE4SS.log.")
+say("Done. Start the game and look for '[af-modloader-api] AF Mod Loader API 0.1.2 loaded' in UE4SS.log.")

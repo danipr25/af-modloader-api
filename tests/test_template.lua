@@ -81,7 +81,7 @@ return {
       local s = setup()
       s.exports["af-modloader-api"] = loadMod("mod", s.newAF("af-modloader-api", {}), s.stubs)
       local api = s.exports["af-modloader-api"]
-      lu.assertEquals(api.version, "0.1.1")
+      lu.assertEquals(api.version, "0.1.2")
 
       -- The API hooks the game and registers af.help (and its uppercase alias).
       lu.assertNotNil(s.hooks["/Script/Engine.PlayerController:ClientRestart"])
