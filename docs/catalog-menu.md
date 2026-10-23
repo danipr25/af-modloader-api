@@ -25,7 +25,7 @@ The same mechanism as the TAB menu ([tab-menu.md](tab-menu.md)), done after `BP_
 1. Create a `VerticalBox` with `StaticConstructObject` (outer: the panel's `WidgetTree`), add it to `SW_Main` with `AddChild`.
 2. Append the title to `TitleList`, call `EntryPanel:ClearChildren()`, `EntryList:Empty()`, then `PreConstruct(false)` on the group.
 
-Result in the probe: the fifth tab showed, clicking it showed the page, the other tabs kept working, and reopening the menu kept one tab. A page's text sat on the panel's top-left frame corner, so the API pads its pages (`SetPadding` on the slot returned by `AddChild`; **unverified**, the values are a first guess: left 24, top 20, right 24, bottom 16). The API logs once if the call fails.
+Result in the probe: the fifth tab showed, clicking it showed the page, the other tabs kept working, and reopening the menu kept one tab. A page's text sat on the panel's top-left frame corner, so the API pads its pages (`SetPadding` on the slot returned by `AddChild`; **unverified** through the API; the values are left 40, top 36, right 24, bottom 16, picked by eye in a probe on 2026-10-23 on game 1.1.5024: with top 20 the text sat under the top-left ornament, see [widgets.md](widgets.md)). The API logs once if the call fails.
 
 Two added tabs in this menu are **verified** (2026-10-23, game 1.1.5024, API 0.1.1: Cauldron Recipes and a layout probe, log "added 2 tab(s) ... pages 5"): each opens its own page. More than two is unverified.
 
