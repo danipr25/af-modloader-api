@@ -2,7 +2,7 @@
 
 All notable changes to AF Mod Loader API. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). While the version is 0.x, a patch version fixes things or adds functions without breaking mods, and a minor version may break them and says how here.
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-10-23
 
 First public release.
 
