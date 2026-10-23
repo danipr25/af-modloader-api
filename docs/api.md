@@ -73,7 +73,7 @@ local tab = api.tabs.add({
 
 `menu` must be nil, `"tab"` or `"catalog"`, anything else is an error. The page widgets and the handle rules are the same in both menus. The tab id is unique within your mod across both menus.
 
-**The V menu**: the tab is added after Materials, Goods, Stats and Ledger. Its pages are padded so the text does not sit on the panel's frame. There is no paging of the V menu's bar: with five tabs it fits, more are not handled. The panel class is not loaded when the game starts, so the API hooks the V menu when its class appears (see [catalog-menu.md](catalog-menu.md)); if that timing fails, the tab appears the next time the V menu opens. Status of the V menu's tabs: the mechanism (a title in `TitleList`, `PreConstruct`, a page in `SW_Main`) with one extra tab is **verified in game in a probe** (2026-10-22, game 1.1.5024); the API's own implementation, the padding values, the highlighted tab after a rebuild (read from `CurrentActivePage`), the lazy hook registration and more than one tab in this menu are **not verified**.
+**The V menu**: the tab is added after Materials, Goods, Stats and Ledger. Its pages are padded so the text does not sit on the panel's frame. There is no paging of the V menu's bar: with five tabs it fits, more are not handled. The panel class is not loaded when the game starts, so the API hooks the V menu when its class appears (see [catalog-menu.md](catalog-menu.md)); if that timing fails, the tab appears the next time the V menu opens. Status of the V menu's tabs: the mechanism (a title in `TitleList`, `PreConstruct`, a page in `SW_Main`) with one extra tab is **verified in game in a probe** (2026-10-22, game 1.1.5024); the API's own implementation, the padding values, the highlighted tab after a rebuild (read from `CurrentActivePage`), the lazy hook registration are **not verified**. Two added tabs in this menu (Cauldron Recipes and a probe) are **verified in game** (2026-10-23, game 1.1.5024, API 0.1.1): each opens its own page.
 
 Tabs appear after the game's own, in the order mods registered them (which follows the loader's load order). A duplicate id or title is refused with a log line naming both mods; you get a tab that does nothing so your mod keeps running. Invalid arguments raise an error.
 
@@ -280,11 +280,11 @@ page:space(12)
 page:text("Normal cauldron")
 ```
 
-Status: **not verified in game.** The widget is the game's UMG `Spacer` (`SetSize`), written from the Unreal Engine documentation. If the game refuses it, one line is written to `UE4SS.log` and the gap is missing.
+Status: **verified in game** in the V menu (2026-10-23, game 1.1.5024, API 0.1.1, probe): `page:space` and `row:space` (in a page row and in list rows) show gaps. The widget is the game's UMG `Spacer` (`SetSize`). If the game refuses it, one line is written to `UE4SS.log` and the gap is missing; the test log had no such line. A gap of 32 between groups of item tiles does not visually separate them. `section:space` is verified too: the gap shows above the section text on the Goods item sheet and stays when switching items. Not tested in the TAB menu.
 
 ### `page:columns(widths)` returns `{ pane, pane, ... }`
 
-Added in 0.1.1. Splits the rest of the page into panes side by side and returns one pane per entry of `widths`. The widths are relative: `{ 1, 2 }` is a third and two thirds. `widths` must be an array of 2 or more finite numbers above 0 (no upper limit on the count), otherwise it is an error that points at your call, before anything is built. There is a fixed gap of 24 between panes (a guess until the in-game test).
+Added in 0.1.1. Splits the rest of the page into panes side by side and returns one pane per entry of `widths`. The widths are relative: `{ 1, 2 }` is a third and two thirds. `widths` must be an array of 2 or more finite numbers above 0 (no upper limit on the count), otherwise it is an error that points at your call, before anything is built. There is a fixed gap of 24 between panes (verified in game to look right in the V menu).
 
 ```lua
 local left, right = table.unpack(page:columns({ 1, 2 }))
@@ -306,7 +306,7 @@ The columns take the rest of the page's height, like a grid or a list. Anything 
 
 On a page handle kept past its page, `columns` still checks `widths` and then returns inert panes: every method does nothing.
 
-Status: **not verified in game.** It uses a `HorizontalBox` with a `VerticalBox` per pane, `HorizontalBoxSlot:SetSize` (Fill) and `SetPadding`. If the game refuses the slot calls, one line is written to `UE4SS.log` and the panes may share the width equally with no gap. Open questions for the in-game test: the page's width in the V menu, and two scroll boxes side by side.
+Status: **verified in game** in the V menu (2026-10-23, game 1.1.5024, API 0.1.1, probe). `columns({ 1, 2 })` shows two panes at a third and two thirds with the 24 gap; a `grid` in the narrow pane shows 4 tiles per row; the grid and a list scroll independently in their panes; an input in a pane fires `onChange`; clicks route in both panes, also after `tab:refresh()` rebuilt the page; small text in a pane is left-aligned. The log had no "could not" line for the slot calls. Content wider than its pane is cut silently at the pane's edge (the scroll box clips it): in the two-thirds pane a list row of three groups of 3 tiles joined by " + " lost its third group, and one group of 3 tiles with 2 " + " texts takes about a third of that pane. **Not verified**: `columns` in the TAB menu (only the V menu was tested).
 
 ### `pane:clear()`
 
@@ -316,7 +316,7 @@ After `clear`, the handles made in that pane before (texts, inputs, rows, lists,
 
 It is made to be called from a click callback of a tile or button in the same pane (the example above): the click router has already picked the callback when it runs, so dropping the clicked widget's own entry is safe.
 
-Status: **not verified in game**, in particular clearing a pane inside the click of one of its own tiles. `grid:clear()` from a tile click is verified; `VerticalBox:ClearChildren` for a pane is not. If the game refuses it, one line is written to `UE4SS.log` and the pane keeps what it had.
+Status: **verified in game** in the V menu for the case the probe exercised (2026-10-23, game 1.1.5024, API 0.1.1): a click on a tile in the left pane called `right:clear()` and rebuilt the right pane with no flicker, many times in a row and on the same tile repeatedly; the left grid kept its scroll; the arrows and the button of the rebuilt pane routed clicks. **Not verified**: clearing a pane from a click on a tile inside that same pane (the probe only cleared the right pane from left-pane tiles, and its right-pane arrows and button did not clear). The log had no "pane:clear failed" line.
 
 ## World
 
@@ -445,8 +445,8 @@ Status: **verified in game** with a throwaway mod (the console opens with both k
 | `TextBlock:SetColorAndOpacity` | `text:color(r, g, b, a)` | verified on page and row texts (2026-10-21); list texts not verified |
 | `ScaleBox` (`SetStretch(7)`, `SetUserSpecifiedScale`), `Overlay`, `Image:SetDesiredSizeOverride`, `Image:SetRenderScale` | Small text and buttons, arrow buttons (`row:arrow`) | `ScaleBox` and the arrow overlay verified in a probe and through the API (2026-10-22, game 1.1.5024, API 0.1.5) |
 | `HorizontalBoxSlot:SetVerticalAlignment(2)`, `VerticalBoxSlot:SetHorizontalAlignment(1)` | Centered rows, left-aligned small text on a page | the horizontal box slot is verified in a probe (2026-10-22); the vertical box slot call is verified through the API (2026-10-22, game 1.1.5024, API 0.1.5): small text starts at the left edge |
-| `HorizontalBoxSlot:SetSize` (Fill) and `SetPadding`, `VerticalBox:ClearChildren` (a pane) | `page:columns`: the panes' widths and gap, and `pane:clear()` | not verified (`SetSize` with Fill is verified on a vertical box slot, for lists and grids) |
-| `Spacer:SetSize` (`/Script/UMG.Spacer`) | `page:space`, `pane:space`, `row:space`, `section:space` | not verified |
+| `HorizontalBoxSlot:SetSize` (Fill) and `SetPadding`, `VerticalBox:ClearChildren` (a pane) | `page:columns`: the panes' widths and gap, and `pane:clear()` | verified in game in the V menu (2026-10-23, game 1.1.5024, API 0.1.1); `ClearChildren` from the click of a tile in the same pane not verified |
+| `Spacer:SetSize` (`/Script/UMG.Spacer`) | `page:space`, `pane:space`, `row:space`, `section:space` | verified in game in the V menu (2026-10-23, game 1.1.5024, API 0.1.1) |
 | `TextBlock:SetAutoWrapText` | `page:text(str, { wrap = true })` | verified in a probe (2026-10-21) |
 | `WidgetSwitcher:GetChildIndex`, `GetChildAt`, `GetActiveWidgetIndex`, `SetActiveWidgetIndex`, widget `RemoveFromParent` | Check where our pages are, keep the highlight, clean up | not verified |
 | `FindAllOf`, `GetOuter` | Fallback lookup of the tab bar if the member names change | not verified |

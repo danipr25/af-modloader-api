@@ -10,7 +10,7 @@ Version 0.1.1.
 - `pane:clear()`: rebuild one pane without rebuilding the page, also from a click inside that pane.
 - `page:space(height)`, `pane:space(height)`, `row:space(width)` and `section:space(height)`: empty space.
 
-None of these new calls is verified in game yet.
+Verified in game in the V menu (game 1.1.5024): columns, `pane:clear()` from clicks in another pane, and the spaces. Not verified: `pane:clear()` from a click inside the same pane, and columns and spaces in the TAB menu.
 
 ## [0.1.0] - 2026-10-23
 
