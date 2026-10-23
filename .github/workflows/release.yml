@@ -1,0 +1,126 @@
+name: Release
+
+# A tag like v0.1.0 on main builds the files, attests them and publishes the release. Nothing is built or uploaded
+# from a personal machine.
+# "Run workflow" (on main) is a dry run: it does everything except the attestation and the release, and keeps the
+# files and the release notes as a workflow artifact so they can be read before tagging.
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+jobs:
+  release:
+    name: release
+    runs-on: windows-latest
+    permissions:
+      contents: write # create the release
+      id-token: write # sign the attestation
+      attestations: write # store the attestation
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check that the commit is on main
+        run: |
+          git merge-base --is-ancestor HEAD origin/main
+          if ($LASTEXITCODE -ne 0) { throw 'This commit is not on main. Merge it into main by pull request first.' }
+
+      - name: Check that the tag matches the code version
+        run: |
+          $version = (Get-Content -Raw mod/mod.json | ConvertFrom-Json).version
+          $main = Get-Content -Raw mod/scripts/main.lua
+          if (-not ($main -match 'local VERSION = "(\d+\.\d+\.\d+)"')) { throw 'VERSION was not found in main.lua.' }
+          if ($Matches[1] -ne $version) { throw "mod.json says $version but main.lua says $($Matches[1])." }
+          if ($env:GITHUB_EVENT_NAME -eq 'push') {
+            $tag = $env:GITHUB_REF_NAME
+            if (-not ($tag -match '^v(\d+\.\d+\.\d+)$')) { throw "The tag $tag is not like v1.2.3." }
+            if ($Matches[1] -ne $version) { throw "The tag is $tag but the code is version $version." }
+          } else {
+            $tag = "v$version"
+          }
+          Add-Content -Path $env:GITHUB_ENV -Value "VERSION=$version"
+          Add-Content -Path $env:GITHUB_ENV -Value "TAG=$tag"
+
+      - uses: ./.github/actions/setup-tools
+
+      - name: Checks
+        run: lua scripts/check.lua
+
+      - name: Build
+        run: lua scripts/package.lua
+
+      - name: Write the checksums
+        run: |
+          $file = Join-Path $PWD.Path "dist/af-modloader-api-$env:VERSION.zip"
+          if (-not (Test-Path $file)) { throw "The build did not produce $file." }
+          $lines = Get-ChildItem dist -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sort-Object Name | ForEach-Object {
+            '{0}  {1}' -f (Get-FileHash -Algorithm SHA256 -Path $_.FullName).Hash.ToLower(), $_.Name
+          }
+          [IO.File]::WriteAllText((Join-Path $PWD.Path 'dist/SHA256SUMS.txt'), ($lines -join "`n") + "`n", [Text.Encoding]::ASCII)
+          Get-Content dist/SHA256SUMS.txt
+
+      - name: Attest the build provenance
+        if: github.event_name == 'push'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+
+      - name: Write the release notes
+        run: |
+          # The notes are the CHANGELOG section of this version, then how to verify the files.
+          $lines = Get-Content CHANGELOG.md
+          $heading = '^## \[' + [regex]::Escape($env:VERSION) + '\]'
+          $start = 0..($lines.Count - 1) | Where-Object { $lines[$_] -match $heading } | Select-Object -First 1
+          if ($null -eq $start) { throw "CHANGELOG.md has no section '## [$env:VERSION]'." }
+          $body = @()
+          foreach ($line in $lines[($start + 1)..($lines.Count - 1)]) {
+            if ($line -match '^## ') { break }
+            $body += $line
+          }
+          $changes = ($body -join "`n").Trim()
+          if (-not $changes) { throw "The CHANGELOG.md section for $env:VERSION is empty." }
+
+          $sums = (Get-Content -Raw dist/SHA256SUMS.txt).Trim()
+          $first = (Get-ChildItem dist -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Select-Object -First 1).Name
+          $repo = $env:GITHUB_REPOSITORY
+          $verify = @'
+          ## Verify
+
+          `SHA256SUMS.txt` lists the SHA-256 of every file:
+
+          ```
+          {SUMS}
+          ```
+
+          Check a download with `Get-FileHash -Algorithm SHA256 <file>`. To check that GitHub Actions built it from this repository's `release.yml`, use the GitHub CLI:
+
+          ```
+          gh attestation verify {FILE} --repo {REPO} --signer-workflow {REPO}/.github/workflows/release.yml
+          ```
+          '@
+          $verify = $verify.Replace('{SUMS}', $sums).Replace('{FILE}', $first).Replace('{REPO}', $repo)
+          Set-Content -Path notes.md -Value ($changes + "`n`n" + $verify) -Encoding utf8
+          Get-Content notes.md
+
+      - name: Keep the files and notes (dry run)
+        if: github.event_name != 'push'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-dry-run
+          path: |
+            dist
+            notes.md
+          retention-days: 7
+
+      - name: Publish the release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ghArgs = @($env:TAG) + (Get-ChildItem dist -File).FullName + @('--title', "AF Mod Loader API $env:VERSION", '--notes-file', 'notes.md', '--verify-tag')
+          # Versions before 1.0 are pre-releases.
+          if ($env:VERSION.StartsWith('0.')) { $ghArgs += '--prerelease' }
+          gh release create @ghArgs
