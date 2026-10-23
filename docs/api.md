@@ -1,6 +1,6 @@
 # API reference
 
-AF Mod Loader API 0.1.7 for mod authors. Game 1.1.5024, UE4SS 1181, AF Mod Loader 0.1.0.
+AF Mod Loader API 0.1.0 for mod authors. Game 1.1.5024, UE4SS 1181, AF Mod Loader 0.1.0.
 
 Each function says what is **verified in game** and what is **not verified yet**. Nothing marked "not verified" has run in the game: it is written from the UE4SS and Unreal Engine documentation, wrapped so that a failure is logged instead of crashing, and waits for the in-game test. Verified findings are recorded in [tab-menu.md](tab-menu.md), [catalog-menu.md](catalog-menu.md) and [console.md](console.md).
 
@@ -8,15 +8,15 @@ Each function says what is **verified in game** and what is **not verified yet**
 
 ### Versions
 
-The API is 0.x until 1.0. A patch version (0.1.7) fixes things or adds functions and never breaks a mod. A minor version (0.2.0) may break mods, and the changelog says how. So a mod depends on one minor line of the API, and of the loader, which follows the same rule:
+The API is 0.x until 1.0. A patch version (0.1.1) fixes things or adds functions and never breaks a mod. A minor version (0.2.0) may break mods, and the changelog says how. So a mod depends on one minor line of the API, and of the loader, which follows the same rule:
 
 ```json
 "depends": { "af-modloader": ">=0.1.0 <0.2.0", "af-modloader-api": ">=0.1.0 <0.2.0" }
 ```
 
-`api.version` is the installed version as text, like `"0.1.7"`.
+`api.version` is the installed version as text, like `"0.1.0"`.
 
-Raise the lower bound to the first version that has every call your mod uses. `page:row()`, `row:button`, `page:grid()` and clicks on tiles came with 0.1.1, so a mod that uses them depends on `"af-modloader-api": ">=0.1.1 <0.2.0"`. A mod that does not use them keeps working with `>=0.1.0`. `api.world` came with 0.1.2, so a mod that uses it depends on `"af-modloader-api": ">=0.1.2 <0.2.0"`. `text:color`, `page:text(str, { wrap = true })` and `button:enable` came with 0.1.3, so a mod that uses them depends on `"af-modloader-api": ">=0.1.3 <0.2.0"`. `page:text(str, { size = "small" })`, `row:text(str, { size = "small" })`, `row:button(label, onClick, { small = true })` and `row:arrow` came with 0.1.5, so a mod that uses them depends on `"af-modloader-api": ">=0.1.5 <0.2.0"`. 0.1.5 also centers the contents of rows vertically, for every mod. `row:item(name, 1, { onClick = fn })`, a clickable item tile in a page row, came with 0.1.6, so a mod that uses it depends on `"af-modloader-api": ">=0.1.6 <0.2.0"`. `api.tabs.add` with `menu = "catalog"` (a tab in the V menu), `tab:select()` and `api.catalog.section` (a section on the V menu's item sheet) came with 0.1.7, so a mod that uses them depends on `"af-modloader-api": ">=0.1.7 <0.2.0"`.
+Raise the lower bound to the first version that has every call your mod uses. Every call in this reference is in 0.1.0, so `>=0.1.0 <0.2.0` is enough. Later patch versions will say which version added what. Development builds before the first public release were numbered 0.1.1 to 0.1.7; 0.1.0 is the first public release, and the in-game verification records below that name those build numbers stay as they were written.
 
 ### Threads
 
@@ -67,13 +67,13 @@ local tab = api.tabs.add({
   build = function(page)      -- fills the page; runs again on tab:refresh()
     page:text("Hello")
   end,
-  menu = "tab",               -- optional (API 0.1.7): "tab" (the TAB menu, the default) or "catalog" (the V menu)
+  menu = "tab",               -- optional: "tab" (the TAB menu, the default) or "catalog" (the V menu)
 })
 ```
 
 `menu` must be nil, `"tab"` or `"catalog"`, anything else is an error. The page widgets and the handle rules are the same in both menus. The tab id is unique within your mod across both menus.
 
-**The V menu** (API 0.1.7): the tab is added after Materials, Goods, Stats and Ledger. Its pages are padded so the text does not sit on the panel's frame. There is no paging of the V menu's bar: with five tabs it fits, more are not handled. The panel class is not loaded when the game starts, so the API hooks the V menu when its class appears (see [catalog-menu.md](catalog-menu.md)); if that timing fails, the tab appears the next time the V menu opens. Status of the V menu's tabs: the mechanism (a title in `TitleList`, `PreConstruct`, a page in `SW_Main`) with one extra tab is **verified in game in a probe** (2026-10-22, game 1.1.5024); the API's own implementation, the padding values, the highlighted tab after a rebuild (read from `CurrentActivePage`), the lazy hook registration and more than one tab in this menu are **not verified**.
+**The V menu**: the tab is added after Materials, Goods, Stats and Ledger. Its pages are padded so the text does not sit on the panel's frame. There is no paging of the V menu's bar: with five tabs it fits, more are not handled. The panel class is not loaded when the game starts, so the API hooks the V menu when its class appears (see [catalog-menu.md](catalog-menu.md)); if that timing fails, the tab appears the next time the V menu opens. Status of the V menu's tabs: the mechanism (a title in `TitleList`, `PreConstruct`, a page in `SW_Main`) with one extra tab is **verified in game in a probe** (2026-10-22, game 1.1.5024); the API's own implementation, the padding values, the highlighted tab after a rebuild (read from `CurrentActivePage`), the lazy hook registration and more than one tab in this menu are **not verified**.
 
 Tabs appear after the game's own, in the order mods registered them (which follows the loader's load order). A duplicate id or title is refused with a log line naming both mods; you get a tab that does nothing so your mod keeps running. Invalid arguments raise an error.
 
@@ -100,7 +100,7 @@ Status: **not verified**.
 
 ### `tab:select()` returns `true` or `false`
 
-Selects the tab, as if the player clicked it (API 0.1.7). Only for tabs of the V menu (`menu = "catalog"`), and only while the V menu is open: it returns `true` when the selection was scheduled, `false` when the V menu is closed, the tab is not in it, or the tab belongs to the TAB menu (not supported in this version: `OnEntryClick` from Lua is not verified there, and the paging could hide the tab). It does not open menus. The click itself is deferred to the game thread (`ExecuteInGameThread`), so it is safe to call from a click callback.
+Selects the tab, as if the player clicked it. Only for tabs of the V menu (`menu = "catalog"`), and only while the V menu is open: it returns `true` when the selection was scheduled, `false` when the V menu is closed, the tab is not in it, or the tab belongs to the TAB menu (not supported in this version: `OnEntryClick` from Lua is not verified there, and the paging could hide the tab). It does not open menus. The click itself is deferred to the game thread (`ExecuteInGameThread`), so it is safe to call from a click callback.
 
 ```lua
 -- A button on the item sheet opens your tab.
@@ -115,7 +115,7 @@ Status: `OnEntryClick(index)` on the V menu's tab bar, called from a button clic
 
 ### `api.catalog.section(spec)` returns `true`, or `false` when refused
 
-Adds a section to the item sheet of the V menu (API 0.1.7): the panel that shows an item, with "Used in Crafting" and the records. Register it in your entrypoint, like tabs.
+Adds a section to the item sheet of the V menu: the panel that shows an item, with "Used in Crafting" and the records. Register it in your entrypoint, like tabs.
 
 ```lua
 api.catalog.section({
@@ -180,11 +180,11 @@ Status: the box, typing in it, `onChange` and the polling (with `LoopInGameThrea
 Adds a horizontal row on the page itself: things placed side by side.
 
 - `row:text(str)` adds text and returns a text handle (`:set`).
-- `row:item(itemName, count, opts)` adds the game's item tile, like in a list row. `opts` is optional and only for rows of a page (API 0.1.6): `{ onClick = function(itemName) end }` makes the tile clickable. A clickable tile is the game's `WBP_RecipeItemTile_C`, the one `grid:tile` makes, so it shows no count: `count` must be nil or 1, otherwise it is an error. A click with any mouse button calls `onClick(itemName)`, like on a grid tile. `opts` must be nil or a table whose `onClick` is a function, otherwise it is an error. A list row (`list:row()`) has no clickable tiles and rejects `opts` with an error (before 0.1.6 a third argument was ignored there). Unknown keys in `opts` are ignored. After a click that rebuilds the row, a second quick click hits whatever tile is now in that place: in game, a fast double click on one of two clickable tiles whose click rebuilds the row did not trigger the second tile (the interval is short), so there was one effect (2026-10-22, game 1.1.5024, API 0.1.5 and 0.1.6).
+- `row:item(itemName, count, opts)` adds the game's item tile, like in a list row. `opts` is optional and only for rows of a page: `{ onClick = function(itemName) end }` makes the tile clickable. A clickable tile is the game's `WBP_RecipeItemTile_C`, the one `grid:tile` makes, so it shows no count: `count` must be nil or 1, otherwise it is an error. A click with any mouse button calls `onClick(itemName)`, like on a grid tile. `opts` must be nil or a table whose `onClick` is a function, otherwise it is an error. A list row (`list:row()`) has no clickable tiles and rejects `opts` with an error. Unknown keys in `opts` are ignored. After a click that rebuilds the row, a second quick click hits whatever tile is now in that place: in game, a fast double click on one of two clickable tiles whose click rebuilds the row did not trigger the second tile (the interval is short), so there was one effect (2026-10-22, game 1.1.5024, API 0.1.5 and 0.1.6).
 - `row:button(label, onClick, opts)` adds the game's button with `label` as its text and returns a button handle. `onClick()` is called when the player clicks it. `button:set(label)` changes the label. `button:enable(on)` enables (`true`) or disables (`false`) it: a disabled button is grey and ignores clicks. `on` must be a boolean, otherwise it is an error, also on a handle whose page was rebuilt; only a handle made on a page that was already gone does nothing and checks nothing. Buttons start enabled; call `enable(false)` right after adding the button to its row, and keep the handle to enable it again later. `opts` is optional: `{ small = true }` draws a smaller button (the game's button inside a `ScaleBox` at 0.6, same handle and clicks). `opts` must be nil or a table whose `small` is a boolean, otherwise it is an error.
 - `row:arrow(direction, onClick)` adds a small arrow button, `direction` being `"previous"` (points left) or `"next"` (points right), anything else is an error. It is the game's button inside a `ScaleBox` at 0.6 with the game's gold arrow picture on top. The handle has only `enable(on)`: like `button:enable`, but the arrow is also grey when disabled and gold when enabled. If the picture cannot be found, the arrow is a small button labelled `<` or `>` and one line is logged.
 
-Rows center their contents vertically (API 0.1.5): a text, an item tile, a button and an arrow in the same row share a middle line. This applies to page rows and list rows.
+Rows center their contents vertically: a text, an item tile, a button and an arrow in the same row share a middle line. This applies to page rows and list rows.
 
 ```lua
 local row = page:row()
@@ -385,7 +385,7 @@ Status: **verified in game** with a throwaway mod (the console opens with both k
 | `WBP_ButtonBase_C:SetIsEnabled` | `button:enable(on)` | verified in a probe (2026-10-21): grey, clicks ignored |
 | `TextBlock:SetColorAndOpacity` | `text:color(r, g, b, a)` | verified on page and row texts (2026-10-21); list texts not verified |
 | `ScaleBox` (`SetStretch(7)`, `SetUserSpecifiedScale`), `Overlay`, `Image:SetDesiredSizeOverride`, `Image:SetRenderScale` | Small text and buttons, arrow buttons (`row:arrow`) | `ScaleBox` and the arrow overlay verified in a probe and through the API (2026-10-22, game 1.1.5024, API 0.1.5) |
-| `HorizontalBoxSlot:SetVerticalAlignment(2)`, `VerticalBoxSlot:SetHorizontalAlignment(1)` | Centered rows (0.1.5), left-aligned small text on a page | the horizontal box slot is verified in a probe (2026-10-22); the vertical box slot call is verified through the API (2026-10-22, game 1.1.5024, API 0.1.5): small text starts at the left edge |
+| `HorizontalBoxSlot:SetVerticalAlignment(2)`, `VerticalBoxSlot:SetHorizontalAlignment(1)` | Centered rows, left-aligned small text on a page | the horizontal box slot is verified in a probe (2026-10-22); the vertical box slot call is verified through the API (2026-10-22, game 1.1.5024, API 0.1.5): small text starts at the left edge |
 | `TextBlock:SetAutoWrapText` | `page:text(str, { wrap = true })` | verified in a probe (2026-10-21) |
 | `WidgetSwitcher:GetChildIndex`, `GetChildAt`, `GetActiveWidgetIndex`, `SetActiveWidgetIndex`, widget `RemoveFromParent` | Check where our pages are, keep the highlight, clean up | not verified |
 | `FindAllOf`, `GetOuter` | Fallback lookup of the tab bar if the member names change | not verified |

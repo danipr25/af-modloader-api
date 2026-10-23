@@ -16,6 +16,6 @@ It changes nothing in your saves.
 3. Edit `scripts/main.lua`.
 4. Put the folder in `<game folder>\mods`.
 
-About `depends` in `mod.json`: `"af-modloader-api": ">=0.1.3 <0.2.0"` means "any 0.1.x version of the API from 0.1.3 on" (0.1.3 added text colors, wrapped texts and disabled buttons, 0.1.2 added `api.world`, 0.1.1 added buttons, rows and grids). Raise the lower bound to the first version that has every call your mod uses. While the API is 0.x, a new minor version (0.2.0) may break mods, and a patch version (0.1.3) only fixes or adds things.
+About `depends` in `mod.json`: `"af-modloader-api": ">=0.1.0 <0.2.0"` means "any 0.1.x version of the API from 0.1.0 on". Raise the lower bound to the first version that has every call your mod uses. While the API is 0.x, a new minor version (0.2.0) may break mods, and a patch version (0.1.1) only fixes or adds things.
 
 Mod files are Lua. UE4SS runs them, so the mod can use anything UE4SS offers, but the API is the supported way to add tabs and commands.

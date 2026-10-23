@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [development, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-tools
+      - name: Checks (format, lint, tests)
+        run: lua scripts/check.lua
+      - name: Package the mod
+        run: lua scripts/package.lua

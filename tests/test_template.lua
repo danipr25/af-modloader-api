@@ -81,7 +81,7 @@ return {
       local s = setup()
       s.exports["af-modloader-api"] = loadMod("mod", s.newAF("af-modloader-api", {}), s.stubs)
       local api = s.exports["af-modloader-api"]
-      lu.assertEquals(api.version, "0.1.7")
+      lu.assertEquals(api.version, "0.1.0")
 
       -- The API hooks the game and registers af.help (and its uppercase alias).
       lu.assertNotNil(s.hooks["/Script/Engine.PlayerController:ClientRestart"])
@@ -147,12 +147,10 @@ return {
       local version = main:match('local VERSION = "([^"]+)"')
       lu.assertEquals(modJson:match('"version": "([^"]+)"'), version)
       lu.assertEquals(modJson:match('"id": "([^"]+)"'), "af-modloader-api")
-      -- The template depends on this 0.x line of the API: >=0.N.0 <0.(N+1).0.
-      -- The template depends on this 0.x line of the API, from 0.1.6 on (the version that added clickable row
-      -- items, on top of small texts, buttons and arrows, which the template uses). Raise this literal only when
-      -- the template needs more.
+      -- The template depends on this 0.x line of the API: >=0.N.0 <0.(N+1).0. Raise the lower bound only when the
+      -- template needs a call that a later patch version added.
       lu.assertEquals(version:match("^0%.1%."), "0.1.")
-      lu.assertStrContains(template, '"af-modloader-api": ">=0.1.6 <0.2.0"')
+      lu.assertStrContains(template, '"af-modloader-api": ">=0.1.0 <0.2.0"')
     end,
   },
 }
