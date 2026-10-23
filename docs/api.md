@@ -1,6 +1,6 @@
 # API reference
 
-AF Mod Loader API 0.1.0 for mod authors. Game 1.1.5024, UE4SS 1181, AF Mod Loader 0.1.0.
+AF Mod Loader API 0.1.1 for mod authors. Game 1.1.5024, UE4SS 1181, AF Mod Loader 0.1.0.
 
 Each function says what is **verified in game** and what is **not verified yet**. Nothing marked "not verified" has run in the game: it is written from the UE4SS and Unreal Engine documentation, wrapped so that a failure is logged instead of crashing, and waits for the in-game test. Verified findings are recorded in [tab-menu.md](tab-menu.md), [catalog-menu.md](catalog-menu.md) and [console.md](console.md).
 
@@ -16,7 +16,7 @@ The API is 0.x until 1.0. A patch version (0.1.1) fixes things or adds functions
 
 `api.version` is the installed version as text, like `"0.1.0"`.
 
-Raise the lower bound to the first version that has every call your mod uses. Every call in this reference is in 0.1.0, so `>=0.1.0 <0.2.0` is enough. Later patch versions will say which version added what. Development builds before the first public release were numbered 0.1.1 to 0.1.7; 0.1.0 is the first public release, and the in-game verification records below that name those build numbers stay as they were written.
+Raise the lower bound to the first version that has every call your mod uses. Every call in this reference is in 0.1.0, so `>=0.1.0 <0.2.0` is enough, except the ones that say "added in 0.1.1" (`page:columns`, `pane:clear`, and the `space` functions): a mod that uses one needs `>=0.1.1 <0.2.0`. Later patch versions will say which version added what. Development builds before the first public release were numbered 0.1.1 to 0.1.7; 0.1.0 is the first public release, and the in-game verification records below that name those build numbers stay as they were written.
 
 ### Threads
 
@@ -130,7 +130,7 @@ api.catalog.section({
 
 After every time the game shows an item (`UpdateContent`), the API clears your section on that sheet and runs `build` again for the new item. Materials and Goods are different sheets and each gets the section. A `build` that writes nothing leaves the section empty (it takes no room), which is how a mod shows nothing for an item it has nothing to say about. The section sits under "Used in Crafting", above the records, and is one box per mod.
 
-`section` is a restricted page: `section:text(str, opts)` (the same `opts` and handle as `page:text`: `wrap` and `size`) and `section:row()` with `row:text` and `row:button` only (no items, arrows, inputs, lists or grids). Handles are valid until the next build of the section, which is the next item shown on that sheet: keep none across items. An error in `build` is logged with the mod id and the item, once with the stack trace and then in short, and the section stays empty. Clicks on section buttons work while the sheet is shown. A duplicate id is refused with a log line and `false`; invalid arguments raise an error.
+`section` is a restricted page: `section:text(str, opts)` (the same `opts` and handle as `page:text`: `wrap` and `size`), `section:space(height)` (added in 0.1.1: empty vertical space, the same as `page:space`) and `section:row()` with `row:text` and `row:button` only (no items, arrows, inputs, lists or grids, and no `row:space`). Handles are valid until the next build of the section, which is the next item shown on that sheet: keep none across items. An error in `build` is logged with the mod id and the item, once with the stack trace and then in short, and the section stays empty. Clicks on section buttons work while the sheet is shown. A duplicate id is refused with a log line and `false`; invalid arguments raise an error.
 
 Items shown before the API's hook exists have no section: the hook is registered when the V menu panel is first seen, and the first `UpdateContent` after that builds it.
 
@@ -204,6 +204,17 @@ local chosen = page:row()
 chosen:item("Wood", 1, { onClick = function(name) heading:set("You clicked " .. name) end })
 ```
 
+- `row:space(width)` (added in 0.1.1) adds an empty gap of `width` between two things of the row. `width` must be a finite number above 0 and up to 400, otherwise it is an error. It works in page rows, pane rows and list rows (not in section rows).
+
+```lua
+local recipe = list:row()
+recipe:item("Wood", 1)
+recipe:text(" + ")
+recipe:item("Stone", 1)
+recipe:space(32) -- a gap before the next recipe in the same row
+recipe:item("Coal", 1)
+```
+
 Buttons live in rows made with `page:row()`. List rows (`list:row()`) have no buttons. About three buttons fit in a row: a fourth runs past the panel.
 
 Status: `HorizontalBox` and the button (`WBP_ButtonBase_C` created with `Create`, label with `SetButtonText`) are **verified in game** in a spike (2026-10-21, see [widgets.md](widgets.md)). The API's own `row:button`, with a click that calls `tab:refresh()`, is **verified in game** too (2026-10-21, API 0.1.1): one effect per click, also after many fast clicks. `enable` (`SetIsEnabled`) is **verified in game** in a probe (2026-10-21): the button turns grey and clicks do nothing. Also verified with API 0.1.3 and the template (2026-10-21): a button disabled at build time is grey and ignores clicks, stays grey after closing and reopening the TAB menu, and works again after another button calls `enable(true)`. The click router also skips a button its handle marked disabled, as a second guard. **Verified in game through the API** (2026-10-22, game 1.1.5024, API 0.1.5 and 0.1.6): a clickable `row:item` (a `WBP_RecipeItemTile_C` inside the `HorizontalBox`) shows correctly in a page row next to buttons and small text, and its click routes, also with a right click (any mouse button); the centering of row children (text, tiles, buttons and arrows share a middle line); `{ small = true }` buttons, which show smaller and click; and `row:arrow`: the gold arrow picture at size 64 (before scaling) looks right, it is grey when disabled, and clicks step pages. The probe before it verified a `ScaleBox` at 0.6 around the game's button and the arrow overlay. **Not verified**: the `<` and `>` fallback when the arrow texture is missing. Row text, button and arrow slots that the game refuses to center are logged once.
@@ -258,6 +269,54 @@ row:item("GentianNectar", 2)
 The API does not look up item names or recipes: that is the mod's job.
 
 Status: the item tile (`WBP_SimpleItemTile_C` with `UpdateItemInfo`) is **verified in game** with a count of 1, including its tooltip. The scrolling list, its rows and the fill-the-page setting are **verified in game** too (2026-10-21): 300 rows of item tiles scroll smoothly, building them takes about 80 ms, and clearing and rebuilding the list on every filter change feels instant. How a count other than 1 is shown was not checked.
+
+### `page:space(height)` and `pane:space(height)`
+
+Added in 0.1.1. Adds empty vertical space of `height` below what is already there. `height` must be a finite number above 0 and up to 400, otherwise it is an error that points at your call (the check runs before anything is built). Item sheet sections have it too: `section:space(height)`.
+
+```lua
+page:text("Recipes")
+page:space(12)
+page:text("Normal cauldron")
+```
+
+Status: **not verified in game.** The widget is the game's UMG `Spacer` (`SetSize`), written from the Unreal Engine documentation. If the game refuses it, one line is written to `UE4SS.log` and the gap is missing.
+
+### `page:columns(widths)` returns `{ pane, pane, ... }`
+
+Added in 0.1.1. Splits the rest of the page into panes side by side and returns one pane per entry of `widths`. The widths are relative: `{ 1, 2 }` is a third and two thirds. `widths` must be an array of 2 or more finite numbers above 0 (no upper limit on the count), otherwise it is an error that points at your call, before anything is built. There is a fixed gap of 24 between panes (a guess until the in-game test).
+
+```lua
+local left, right = table.unpack(page:columns({ 1, 2 }))
+local box = left:input({ hint = "Search" })
+local items = left:grid()
+items:tile("Wood", {
+  onClick = function(name)
+    right:clear() -- rebuild only the right pane, the left one keeps its scroll
+    right:text(name)
+    right:space(12)
+    right:list():row():item(name, 1)
+  end,
+})
+```
+
+A pane has the same `text`, `input`, `row`, `list`, `grid` and `space` as the page, with the same options and handles, plus `clear`. There is no `columns` inside a pane. A `grid` or `list` in a pane fills the rest of that pane and scrolls on its own. A pane's rows have `row:space`.
+
+The columns take the rest of the page's height, like a grid or a list. Anything added to the page after `columns` sits below them, at the bottom of the page, and a second widget that also fills (a grid or list on the page) shares the height with them.
+
+On a page handle kept past its page, `columns` still checks `widths` and then returns inert panes: every method does nothing.
+
+Status: **not verified in game.** It uses a `HorizontalBox` with a `VerticalBox` per pane, `HorizontalBoxSlot:SetSize` (Fill) and `SetPadding`. If the game refuses the slot calls, one line is written to `UE4SS.log` and the panes may share the width equally with no gap. Open questions for the in-game test: the page's width in the V menu, and two scroll boxes side by side.
+
+### `pane:clear()`
+
+Added in 0.1.1. Removes everything in that pane and nothing else, so a mod can rebuild one pane on a click without calling `tab:refresh()`: no flicker, and the other pane keeps its scroll and state.
+
+After `clear`, the handles made in that pane before (texts, inputs, rows, lists, grids) are dead: they do nothing and write one line to `UE4SS.log` the first time, like handles after a refresh. Their click callbacks are dropped, and the pane's inputs stop calling `onChange`. Use the handles you make after `clear`. The other pane and the page are not affected. `clear` on a pane whose page was rebuilt does nothing.
+
+It is made to be called from a click callback of a tile or button in the same pane (the example above): the click router has already picked the callback when it runs, so dropping the clicked widget's own entry is safe.
+
+Status: **not verified in game**, in particular clearing a pane inside the click of one of its own tiles. `grid:clear()` from a tile click is verified; `VerticalBox:ClearChildren` for a pane is not. If the game refuses it, one line is written to `UE4SS.log` and the pane keeps what it had.
 
 ## World
 
@@ -386,6 +445,8 @@ Status: **verified in game** with a throwaway mod (the console opens with both k
 | `TextBlock:SetColorAndOpacity` | `text:color(r, g, b, a)` | verified on page and row texts (2026-10-21); list texts not verified |
 | `ScaleBox` (`SetStretch(7)`, `SetUserSpecifiedScale`), `Overlay`, `Image:SetDesiredSizeOverride`, `Image:SetRenderScale` | Small text and buttons, arrow buttons (`row:arrow`) | `ScaleBox` and the arrow overlay verified in a probe and through the API (2026-10-22, game 1.1.5024, API 0.1.5) |
 | `HorizontalBoxSlot:SetVerticalAlignment(2)`, `VerticalBoxSlot:SetHorizontalAlignment(1)` | Centered rows, left-aligned small text on a page | the horizontal box slot is verified in a probe (2026-10-22); the vertical box slot call is verified through the API (2026-10-22, game 1.1.5024, API 0.1.5): small text starts at the left edge |
+| `HorizontalBoxSlot:SetSize` (Fill) and `SetPadding`, `VerticalBox:ClearChildren` (a pane) | `page:columns`: the panes' widths and gap, and `pane:clear()` | not verified (`SetSize` with Fill is verified on a vertical box slot, for lists and grids) |
+| `Spacer:SetSize` (`/Script/UMG.Spacer`) | `page:space`, `pane:space`, `row:space`, `section:space` | not verified |
 | `TextBlock:SetAutoWrapText` | `page:text(str, { wrap = true })` | verified in a probe (2026-10-21) |
 | `WidgetSwitcher:GetChildIndex`, `GetChildAt`, `GetActiveWidgetIndex`, `SetActiveWidgetIndex`, widget `RemoveFromParent` | Check where our pages are, keep the highlight, clean up | not verified |
 | `FindAllOf`, `GetOuter` | Fallback lookup of the tab bar if the member names change | not verified |

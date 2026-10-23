@@ -28,10 +28,12 @@ function Router:forget(address)
   self.entries[address] = nil
 end
 
--- Removes every entry that belongs to a page session (called when that page is rebuilt).
+-- Removes every entry that belongs to a session (called when a page is rebuilt, or a pane is cleared). A pane's
+-- session names the page's as its parent, so dropping a page also drops its panes' entries. Removing entries while
+-- walking the table is allowed, so this is safe inside a click callback too.
 function Router:dropSession(session)
   for address, entry in pairs(self.entries) do
-    if entry.session == session then
+    if entry.session == session or (entry.session ~= nil and entry.session.parent == session) then
       self.entries[address] = nil
     end
   end

@@ -77,6 +77,7 @@ end
 local function sectionHandle(page)
   local section = {}
   section.text = page.text
+  section.space = page.space
   function section.row()
     local row = page:row()
     return registry.readonly({ text = row.text, button = row.button }, "a section row")
