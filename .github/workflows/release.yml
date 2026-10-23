@@ -2,21 +2,20 @@ name: Release
 
 # A tag like v0.1.0 on main builds the files, attests them and publishes the release. Nothing is built or uploaded
 # from a personal machine.
-# "Run workflow" (on main) is a dry run: it does everything except the attestation and the release, and keeps the
-# files and the release notes as a workflow artifact so they can be read before tagging.
+# "Run workflow" (on main) is a dry run: only the build job runs. It keeps the files and the release notes as the
+# workflow artifact "release", so they can be read before tagging.
 on:
   push:
     tags: ['v*.*.*']
   workflow_dispatch:
 
 jobs:
-  release:
-    name: release
+  # Builds and checks everything. It cannot write to the repository.
+  build:
+    name: build
     runs-on: windows-latest
     permissions:
-      contents: write # create the release
-      id-token: write # sign the attestation
-      attestations: write # store the attestation
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -38,11 +37,8 @@ jobs:
             $tag = $env:GITHUB_REF_NAME
             if (-not ($tag -match '^v(\d+\.\d+\.\d+)$')) { throw "The tag $tag is not like v1.2.3." }
             if ($Matches[1] -ne $version) { throw "The tag is $tag but the code is version $version." }
-          } else {
-            $tag = "v$version"
           }
           Add-Content -Path $env:GITHUB_ENV -Value "VERSION=$version"
-          Add-Content -Path $env:GITHUB_ENV -Value "TAG=$tag"
 
       - uses: ./.github/actions/setup-tools
 
@@ -62,12 +58,6 @@ jobs:
           [IO.File]::WriteAllText((Join-Path $PWD.Path 'dist/SHA256SUMS.txt'), ($lines -join "`n") + "`n", [Text.Encoding]::ASCII)
           Get-Content dist/SHA256SUMS.txt
 
-      - name: Attest the build provenance
-        if: github.event_name == 'push'
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with:
-          subject-path: dist/*
-
       - name: Write the release notes
         run: |
           # The notes are the CHANGELOG section of this version, then how to verify the files.
@@ -75,6 +65,10 @@ jobs:
           $heading = '^## \[' + [regex]::Escape($env:VERSION) + '\]'
           $start = 0..($lines.Count - 1) | Where-Object { $lines[$_] -match $heading } | Select-Object -First 1
           if ($null -eq $start) { throw "CHANGELOG.md has no section '## [$env:VERSION]'." }
+          if ($lines[$start] -match 'Unreleased') {
+            if ($env:GITHUB_EVENT_NAME -eq 'push') { throw "The CHANGELOG.md heading for $env:VERSION still says Unreleased. Set the release date first." }
+            Write-Host "::warning::The CHANGELOG.md heading for $env:VERSION still says Unreleased. Set the release date before tagging."
+          }
           $body = @()
           foreach ($line in $lines[($start + 1)..($lines.Count - 1)]) {
             if ($line -match '^## ') { break }
@@ -105,22 +99,45 @@ jobs:
           Set-Content -Path notes.md -Value ($changes + "`n`n" + $verify) -Encoding utf8
           Get-Content notes.md
 
-      - name: Keep the files and notes (dry run)
-        if: github.event_name != 'push'
+      # On a dry run (workflow_dispatch) this artifact is the output to read; on a tag it feeds the publish job.
+      - name: Keep the files and notes
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-dry-run
+          name: release
           path: |
             dist
             notes.md
+          if-no-files-found: error
           retention-days: 7
 
+  # Only for a tag: attests the files built above and publishes the release. This is the only job that can write.
+  publish:
+    name: publish
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: windows-latest
+    permissions:
+      contents: write # create the release
+      id-token: write # sign the attestation
+      attestations: write # store the attestation
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+
+      - name: Attest the build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+
       - name: Publish the release
-        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          $ghArgs = @($env:TAG) + (Get-ChildItem dist -File).FullName + @('--title', "AF Mod Loader API $env:VERSION", '--notes-file', 'notes.md', '--verify-tag')
+          $tag = $env:GITHUB_REF_NAME
+          $version = $tag.Substring(1)
+          $ghArgs = @($tag) + (Get-ChildItem dist -File).FullName + @('--title', "AF Mod Loader API $version", '--notes-file', 'notes.md', '--verify-tag')
           # Versions before 1.0 are pre-releases.
-          if ($env:VERSION.StartsWith('0.')) { $ghArgs += '--prerelease' }
+          if ($version.StartsWith('0.')) { $ghArgs += '--prerelease' }
           gh release create @ghArgs
