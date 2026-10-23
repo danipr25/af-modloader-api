@@ -28,7 +28,7 @@ After a UE4SS mods restart there is no `InitGameState` until the next load, so t
 
 ## Verified with the API (2026-10-21)
 
-API 0.1.2 and the template, game 1.1.5023: main menu, world `Prueba_2609125624`, back to the menu, world `ñú_2610216118`, and both again. Every menu logged "no world loaded (main menu)"; every load logged one enter with a new generation (1 to 5) and the same key for the same world (`Prueba_2609125624`, `~C3~B1~C3~BA_2610216118`); the template's tab showed "World: <title>" each time, the non-ASCII title included.
+API 0.1.2 and the template, game 1.1.5023: main menu, world `Prueba_2609125624`, back to the menu, world `ñú_2610216118`, and both again. Every menu logged "no world loaded (main menu)"; every load logged one enter with a new generation (1 to 5) and the same key for the same world (`Prueba_2609125624`, `~C3~B1~C3~BA_2610216118`); the template's tab showed "World: <title>" each time, the non-ASCII title included. The API versions named here are development builds from before the first public release (see [Versions](api.md#versions)).
 
 ## Not verified
 

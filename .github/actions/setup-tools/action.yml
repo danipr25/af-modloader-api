@@ -1,0 +1,74 @@
+name: Set up tools
+description: >-
+  Installs the tools the checks need: Lua 5.4.6 (built from the source tarball on lua.org), StyLua 2.5.2 and Luacheck
+  1.2.0 (from their official GitHub releases). Every download is checked against a SHA-256 pinned here.
+
+runs:
+  using: composite
+  steps:
+    - name: Install Lua, StyLua and Luacheck
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+
+        # Official sources and their pinned SHA-256. Changing a version means changing its hash in the same commit.
+        # The Lua hash is the one lua.org lists next to the tarball (https://www.lua.org/ftp/).
+        $luaUrl = 'https://www.lua.org/ftp/lua-5.4.6.tar.gz'
+        $luaSha256 = '7d5ea1b9cb6aa0b59ca3dde1c6adcb57ef83a1ba8e5432c0ecd06bf439b3ad88'
+        $styluaUrl = 'https://github.com/JohnnyMorganz/StyLua/releases/download/v2.5.2/stylua-windows-x86_64.zip'
+        $styluaSha256 = 'e77d0ea1226b8b389b43f702240091249a96eea25857281f90ea24d0eb9eb969'
+        $luacheckUrl = 'https://github.com/lunarmodules/luacheck/releases/download/v1.2.0/luacheck.exe'
+        $luacheckSha256 = '0f1c69c4d09f1ebb4d8df14c215e4553e2e639bd4cb7bf3c639b0daa6198317b'
+
+        $bin = Join-Path $env:RUNNER_TEMP 'tools\bin'
+        $work = Join-Path $env:RUNNER_TEMP 'tools\work'
+        New-Item -ItemType Directory -Force -Path $bin, $work | Out-Null
+
+        function Get-Verified([string]$url, [string]$sha256, [string]$path) {
+          Write-Host "Downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile $path -UseBasicParsing
+          $actual = (Get-FileHash -Algorithm SHA256 -Path $path).Hash
+          if ($actual -ne $sha256) {
+            throw "SHA-256 mismatch for $url. Expected $sha256, got $actual."
+          }
+          Write-Host "SHA-256 ok: $actual"
+        }
+
+        # StyLua and Luacheck are ready-made Windows binaries.
+        $styluaZip = Join-Path $work 'stylua.zip'
+        Get-Verified $styluaUrl $styluaSha256 $styluaZip
+        Expand-Archive -Path $styluaZip -DestinationPath $bin -Force
+        Get-Verified $luacheckUrl $luacheckSha256 (Join-Path $bin 'luacheck.exe')
+
+        # Lua has no official Windows binary: build the checked source with the Visual Studio on the runner.
+        $luaTar = Join-Path $work 'lua.tar.gz'
+        Get-Verified $luaUrl $luaSha256 $luaTar
+        # Windows' own tar: the tar from Git cannot read a path with a drive letter.
+        & "$env:SystemRoot\System32\tar.exe" -xzf $luaTar -C $work
+        if ($LASTEXITCODE -ne 0) { throw 'Could not extract the Lua source.' }
+        $luaSrc = Join-Path $work 'lua-5.4.6\src'
+
+        $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+        $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+        if (-not $vs) { throw 'Visual Studio with the C++ tools was not found on this runner.' }
+        $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
+
+        # Every .c file except luac.c (the compiler tool, which has its own main) makes lua.exe.
+        $sources = (Get-ChildItem -Path $luaSrc -Filter '*.c' | Where-Object { $_.Name -ne 'luac.c' }).Name -join ' '
+        $build = Join-Path $work 'build-lua.cmd'
+        @(
+          '@echo off',
+          "call `"$vcvars`" || exit /b 1",
+          "cd /d `"$luaSrc`"",
+          "cl /nologo /O2 /MT /W0 $sources /Fe:lua.exe"
+        ) | Set-Content -Path $build -Encoding ascii
+        cmd.exe /c $build
+        if ($LASTEXITCODE -ne 0) { throw 'Building Lua failed.' }
+        Copy-Item -Path (Join-Path $luaSrc 'lua.exe') -Destination $bin
+
+        # Later steps of the job find the tools on the PATH.
+        Add-Content -Path $env:GITHUB_PATH -Value $bin
+        $env:PATH = "$bin;$env:PATH"
+        lua -v
+        stylua --version
+        luacheck --version
