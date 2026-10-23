@@ -7,15 +7,30 @@ local ui = require("ui")
 
 local GLOBALS = { "StaticFindObject", "StaticConstructObject", "FText", "FName", "FindFirstOf" }
 
--- A widget that records every call and answers the few that return something.
+-- A widget that records every call, every property write and every AddChild in one ordered list (fake.events), and
+-- answers the few calls that return something. Properties the API reads a widget of (a button's border) give a
+-- widget of their own.
 local fake
+local SUB_WIDGETS = { ContentBorder = true, Txt_BuildOptionType = true }
 local function newWidget(class)
   local widget = { class = class, calls = {}, address = #fake.widgets + 1 }
   fake.widgets[#fake.widgets + 1] = widget
   return setmetatable(widget, {
-    __index = function(_, name)
-      return function(self, ...)
-        self.calls[#self.calls + 1] = { name = name, args = { ... } }
+    __newindex = function(self, name, value)
+      fake.events[#fake.events + 1] = { kind = "write", widget = self, name = name, value = value }
+      rawset(self, name, value)
+    end,
+    __index = function(self, name)
+      if SUB_WIDGETS[name] then
+        local child = newWidget(name)
+        rawset(self, name, child)
+        return child
+      end
+      return function(target, ...)
+        target.calls[#target.calls + 1] = { name = name, args = { ... } }
+        if name:find("^AddChild") then
+          fake.events[#fake.events + 1] = { kind = "add", parent = target, child = (...) }
+        end
         if name:find("^AddChildTo") then
           return newWidget("slot")
         elseif name == "IsValid" then
@@ -55,20 +70,28 @@ local function ofClass(class)
 end
 
 local function setupGame()
-  fake = { widgets = {}, saved = {}, logs = {} }
+  fake = { widgets = {}, saved = {}, logs = {}, events = {}, missing = {} }
   for _, name in ipairs(GLOBALS) do
     fake.saved[name] = _G[name]
   end
+  -- The game's style templates: they carry the values the API must copy. fake.missing[path] = true hides a path.
+  fake.templates = {
+    [ui.SCROLL_TEMPLATE] = { WidgetBarStyle = "bar style", ScrollbarThickness = 22.0 },
+    [ui.SEARCH_TEMPLATE] = { WidgetStyle = "search style" },
+  }
   _G.StaticFindObject = function(path)
-    return {
-      path = path,
-      IsValid = function()
-        return true
-      end,
-      Create = function()
-        return newWidget("tile")
-      end,
-    }
+    if fake.missing[path] then
+      return nil
+    end
+    local object = fake.templates[path] or {}
+    object.path = path
+    object.IsValid = function()
+      return true
+    end
+    object.Create = function(_, _, class)
+      return newWidget(class.path == ui.CLASS.divider and "divider" or "tile")
+    end
+    return object
   end
   _G.StaticConstructObject = function(class)
     return newWidget(class.path)
@@ -105,6 +128,37 @@ local function newPage()
     clicks = router,
   })
   return page, session, router, root
+end
+
+-- Position of the first event that matches in fake.events (nil when none).
+local function eventIndex(matches)
+  for i, event in ipairs(fake.events) do
+    if matches(event) then
+      return i
+    end
+  end
+end
+
+local function writeOf(widget, name)
+  return eventIndex(function(event)
+    return event.kind == "write" and event.widget == widget and event.name == name
+  end)
+end
+
+local function addOf(child)
+  return eventIndex(function(event)
+    return event.kind == "add" and event.child == child
+  end)
+end
+
+local function logsWith(text)
+  local found = 0
+  for _, line in ipairs(fake.logs) do
+    if line:find(text, 1, true) then
+      found = found + 1
+    end
+  end
+  return found
 end
 
 local function countClicks(router)
@@ -367,6 +421,178 @@ return {
       lu.assertEquals(rebuilt, 1)
       local stone = ofClass("tile")[2]
       lu.assertNotNil(router.entries[stone.address]) -- the new tile is clickable
+    end,
+
+    testGameStylesAreCopiedBeforeTheWidgetIsAdded = function()
+      local page = newPage()
+      page:grid()
+      page:list()
+      page:input({ hint = "Search" })
+      local scrolls = ofClass(ui.CLASS.scroll)
+      lu.assertEquals(#scrolls, 2)
+      for _, scroll in ipairs(scrolls) do
+        local bar, thickness, added =
+          writeOf(scroll, "WidgetBarStyle"), writeOf(scroll, "ScrollbarThickness"), addOf(scroll)
+        lu.assertNotNil(bar)
+        lu.assertNotNil(thickness)
+        lu.assertTrue(bar < added and thickness < added)
+        lu.assertEquals(scroll.WidgetBarStyle, "bar style")
+        lu.assertEquals(scroll.ScrollbarThickness, 22.0)
+      end
+      local box = ofClass(ui.CLASS.edit)[1]
+      lu.assertTrue(writeOf(box, "WidgetStyle") < addOf(box))
+      lu.assertEquals(box.WidgetStyle, "search style")
+      lu.assertEquals(callsOf(box, "SetHintText")[1][1], "Search") -- the hint still works with the style
+    end,
+
+    testAMissingStyleTemplateKeepsTheEngineDefaultAndLogsOncePerPage = function()
+      fake.missing[ui.SCROLL_TEMPLATE] = true
+      fake.missing[ui.SEARCH_TEMPLATE] = true
+      local page = newPage()
+      page:grid()
+      page:list()
+      page:input()
+      page:input()
+      lu.assertNil(writeOf(ofClass(ui.CLASS.scroll)[1], "WidgetBarStyle"))
+      lu.assertNil(writeOf(ofClass(ui.CLASS.edit)[1], "WidgetStyle"))
+      lu.assertEquals(#ofClass(ui.CLASS.scroll), 2) -- the widgets are still made
+      lu.assertEquals(logsWith("scrollbar style was not found"), 1)
+      lu.assertEquals(logsWith("search box style was not found"), 1)
+    end,
+
+    testSmallButtonsAreScaledAndPaddedAndArrowsKeepTheirScale = function()
+      local page = newPage()
+      local row = page:row()
+      row:button("Add", function() end, { small = true })
+      local boxes = ofClass(ui.CLASS.scale)
+      lu.assertEquals(callsOf(boxes[1], "SetUserSpecifiedScale")[1][1], 0.7)
+      local border = ofClass("ContentBorder")[1]
+      lu.assertEquals(callsOf(border, "SetPadding")[1][1], { Left = 10.0, Top = 0.0, Right = 10.0, Bottom = 0.0 })
+      row:arrow("next", function() end)
+      lu.assertEquals(callsOf(ofClass(ui.CLASS.scale)[2], "SetUserSpecifiedScale")[1][1], 0.6)
+    end,
+
+    testBadDividerHeadingsAreRejectedAtTheModsCall = function()
+      local page = newPage()
+      local pane = page:columns({ 1, 2 })[1]
+      local built = #fake.widgets
+      for _, value in ipairs({ "", 5, true, {} }) do
+        for _, target in ipairs({ page, pane }) do
+          local ok, message = pcall(function()
+            target:divider(value)
+          end)
+          lu.assertFalse(ok)
+          lu.assertStrContains(message, "test_ui_layout.lua")
+          lu.assertStrContains(message, ":divider takes an optional heading as text")
+        end
+      end
+      lu.assertEquals(#fake.widgets, built)
+    end,
+
+    testAHeadingDividerSetsShowTextBeforeItIsAddedAndAPlainOneCollapsesItsText = function()
+      local page = newPage()
+      page:divider("Cauldron")
+      page:divider()
+      local dividers = ofClass("divider")
+      lu.assertEquals(#dividers, 2)
+      lu.assertEquals(dividers[1].ShowText, "Cauldron")
+      lu.assertTrue(writeOf(dividers[1], "ShowText") < addOf(dividers[1]))
+      lu.assertEquals(callsOf(dividers[2].Txt_BuildOptionType, "SetVisibility")[1][1], 1)
+      lu.assertNil(writeOf(dividers[2], "ShowText"))
+      lu.assertEquals(#ofClass(ui.CLASS.sizeBox), 0) -- no solid line was needed
+    end,
+
+    testWithoutTheGameDividerAHorizontalSolidLineTakesItsPlaceAndIsLoggedOnce = function()
+      fake.missing[ui.CLASS.divider] = true
+      local page = newPage()
+      local pane = page:columns({ 1, 2 })[1]
+      page:divider("Cauldron")
+      page:divider()
+      pane:divider()
+      local boxes = ofClass(ui.CLASS.sizeBox)
+      lu.assertEquals(#boxes, 3)
+      lu.assertEquals(callsOf(boxes[1], "SetHeightOverride")[1][1], 2.0)
+      lu.assertEquals(#callsOf(boxes[1], "SetWidthOverride"), 0)
+      lu.assertEquals(callsOf(ofClass(ui.CLASS.image)[1], "SetColorAndOpacity")[1][1], ui.LINE)
+      lu.assertEquals(logsWith("the game's divider could not be made"), 1)
+    end,
+
+    testRowDividersAreAThinVerticalLineThatFillsTheRowWithRoomOnBothSides = function()
+      local page = newPage()
+      local list = page:list()
+      for _, row in ipairs({ page:row(), list:row() }) do
+        row:text("a")
+        row:divider()
+        row:text("b")
+      end
+      local boxes = ofClass(ui.CLASS.sizeBox)
+      lu.assertEquals(#boxes, 2)
+      for _, box in ipairs(boxes) do
+        lu.assertEquals(callsOf(box, "SetWidthOverride")[1][1], 2.0)
+        lu.assertEquals(#callsOf(box, "SetHeightOverride"), 0)
+      end
+      local image = ofClass(ui.CLASS.image)[1]
+      lu.assertEquals(callsOf(image, "SetColorAndOpacity")[1][1], { R = 0.478, G = 0.424, B = 0.373, A = 1.0 })
+      lu.assertEquals(callsOf(image, "SetVisibility")[1][1], 3)
+      local spacers = ofClass(ui.CLASS.spacer)
+      lu.assertEquals(#spacers, 4)
+      lu.assertEquals(callsOf(spacers[1], "SetSize")[1][1], { X = 16.0, Y = 0.0 })
+      local fills = 0
+      for _, slot in ipairs(ofClass("slot")) do
+        for _, args in ipairs(callsOf(slot, "SetVerticalAlignment")) do
+          fills = fills + (args[1] == 0 and 1 or 0)
+        end
+      end
+      lu.assertEquals(fills, 2)
+    end,
+
+    testColumnsOptionsAreCheckedAndADividerSplitsTheGap = function()
+      local page = newPage()
+      local built = #fake.widgets
+      for _, opts in ipairs({ true, "x", { divider = "yes" }, { divider = true, other = 1 }, { other = true } }) do
+        local ok, message = pcall(function()
+          page:columns({ 1, 2 }, opts)
+        end)
+        lu.assertFalse(ok)
+        lu.assertStrContains(message, "test_ui_layout.lua")
+        lu.assertStrContains(message, "page:columns takes an optional second argument")
+      end
+      lu.assertEquals(#fake.widgets, built)
+      page:columns({ 1, 2 }, { divider = false }) -- same as no options
+      lu.assertEquals(#ofClass(ui.CLASS.sizeBox), 0)
+
+      local withLine = newPage()
+      withLine:columns({ 1, 2 }, { divider = true })
+      local boxes = ofClass(ui.CLASS.sizeBox)
+      lu.assertEquals(#boxes, 1)
+      lu.assertEquals(callsOf(boxes[1], "SetWidthOverride")[1][1], 2.0)
+      local halves = 0
+      for _, slot in ipairs(ofClass("slot")) do
+        for _, args in ipairs(callsOf(slot, "SetPadding")) do
+          if args[1].Left == 12.0 then
+            halves = halves + 1
+          end
+        end
+      end
+      lu.assertEquals(halves, 2) -- 12 before the line, 12 before the second pane
+    end,
+
+    testDeadPagesHandOutInertDividers = function()
+      local page, session = newPage()
+      local pane = page:columns({ 1, 2 })[1]
+      local row = page:row()
+      session.alive = false
+      local built = #fake.widgets
+      page:divider("x")
+      pane:divider()
+      pane:row():divider()
+      page:list():row():divider()
+      row:divider()
+      for _, panes in ipairs(page:columns({ 1, 2 }, { divider = true })) do
+        panes:divider("x")
+        panes:row():divider()
+      end
+      lu.assertEquals(#fake.widgets, built)
     end,
 
     testDroppingThePageDropsThePaneClicksToo = function()
