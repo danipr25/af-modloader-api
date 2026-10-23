@@ -200,7 +200,7 @@ local function childIndex(switcher, widget)
 end
 
 -- Cleanup on unload (AF.onUnload) ships DISABLED. UE4SS may run OnUnload off the game thread, and touching widgets
--- from another thread is unsafe (AGENTS.md section 6: unverified code ships off). The code stays for when this is
+-- from another thread is unsafe; code not verified in game ships off. The code stays for when this is
 -- verified in game. While it is off, a UE4SS mods restart leaves the tabs inactive until a save is loaded again.
 local CLEANUP_ENABLED = false
 

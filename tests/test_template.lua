@@ -1,4 +1,4 @@
--- The API mod and the template must load together with the loader's rules (AGENTS.md section 10). The game is
+-- The API mod and the template must load together with the loader's rules. The game is
 -- replaced by stubs here, so this only proves that the files load, register what they say, and agree on versions.
 local lu = require("luaunit")
 

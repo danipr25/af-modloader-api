@@ -13,7 +13,3 @@ build/
 .idea/
 Thumbs.db
 .DS_Store
-
-# Claude Code local files
-.claude/worktrees/
-.claude/settings.local.json

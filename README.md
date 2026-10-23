@@ -50,7 +50,7 @@ api.tabs.add({
 
 ### Development
 
-Needs Lua 5.4, StyLua and Luacheck (see AGENTS.md). `lua scripts/check.lua` runs formatting, lint and the tests.
+Needs Lua 5.4, StyLua and Luacheck. `lua scripts/check.lua` runs formatting, lint and the tests.
 
 To try the mod in a game that already has AF Mod Loader installed, close the game and run `lua scripts/dev-install.lua` from the repository root. Add `--with-template` to also install the template mod, and `--remove-template` to remove it again. Pass the game folder as an argument, or set `AF_GAME_DIR`.
 
