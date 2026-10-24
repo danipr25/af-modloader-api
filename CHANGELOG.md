@@ -6,7 +6,7 @@ All notable changes to AF Mod Loader API. The format follows [Keep a Changelog](
 
 Additions:
 
-- `row:mark(label, onClick)` on list rows: a small clickable text, for a star or a similar toggle. It returns a text handle (`set`, `color`), so the label changes in place. It reacts to any mouse button, on press. It is aligned to the top of the row, drawn at 0.6 and 40 wide before that scale (not verified in game). It exists only on list rows.
+- `row:mark(label, onClick)` on list rows: a small clickable text, for a star or a similar toggle. It returns a text handle (`set`, `color`), so the label changes in place. It reacts to any mouse button, on press. It is centered vertically in the row, drawn at 0.6 and 40 wide before that scale (not verified in game). It exists only on list rows.
 - `list:clear()` now also forgets the clicks of the marks of its rows.
 
 Inside the API (no mod code needs to change): the tab bar arrows and the marks share one hook on `WBP_TagSwitcher_C:OnMouseButtonDown` per menu, registered when the first arrow or mark is made.

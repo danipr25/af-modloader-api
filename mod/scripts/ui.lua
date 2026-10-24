@@ -48,7 +48,7 @@ local USER_SPECIFIED, HIT_TEST_INVISIBLE = 7, 3
 local SMALL_TEXT_SCALE, SMALL_BUTTON_SCALE, ARROW_SCALE, ARROW_IMAGE_SIZE = 0.7, 0.7, 0.6, 64.0
 -- A mark (row:mark) is the game's tab widget made invisible, narrowed to 40, with the label on top, drawn at 0.6
 -- (verified in a probe, game 1.1.5024, 2026-10-23).
-local MARK_SCALE, MARK_WIDTH, V_TOP = 0.6, 40.0, 1
+local MARK_SCALE, MARK_WIDTH = 0.6, 40.0
 -- A small button's label gets this much room on each side (10 was picked in a probe on 2026-10-23; 16 after
 -- the API test showed "Show advanced" filling its button).
 local SMALL_BUTTON_PADDING = 16.0
@@ -654,8 +654,8 @@ function ui.newPage(ctx)
 
   -- A mark: a small clickable label in a list row. The game's tab widget (emptied, 40 wide, render opacity 0) is the
   -- click target; a text sits on top of it in an Overlay (not hit-testable, so the click lands on the tab widget), all
-  -- inside a ScaleBox at 0.6. Its row slot is aligned to the top. The handle is the text handle ({ set, color }).
-  -- track(address) lets the list forget the click entry when it is cleared.
+  -- inside a ScaleBox at 0.6. Its row slot is centered like the other row parts. The handle is the text handle
+  -- ({ set, color }). track(address) lets the list forget the click entry when it is cleared.
   local function makeMark(hbox, label, onClick, extraCheck, tag, track)
     if type(label) ~= "string" or label == "" then
       error('row:mark needs the label as text, like "x"', 3)
@@ -689,16 +689,7 @@ function ui.newPage(ctx)
     end, extraCheck, nil, false)
     local box = scaleBox(ctx.tree, MARK_SCALE)
     box:AddChild(overlay)
-    local slot = hbox:AddChildToHorizontalBox(box)
-    local ok, problem = pcall(function()
-      slot:SetVerticalAlignment(V_TOP)
-    end)
-    if not ok then
-      warnOnce(
-        "mark top",
-        "a mark could not be aligned to the top of its row, it sits in the middle: " .. tostring(problem)
-      )
-    end
+    centerSlot(hbox:AddChildToHorizontalBox(box))
     local address = registerClick(switcher, extraCheck, function()
       onClick()
     end, nil, tag)
