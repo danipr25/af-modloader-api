@@ -2,6 +2,17 @@
 
 All notable changes to AF Mod Loader API. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). While the version is 0.x, a patch version fixes things or adds functions without breaking mods, and a minor version may break them and says how here.
 
+## [0.1.3] - 2026-10-24
+
+Additions:
+
+- `row:mark(label, onClick)` on list rows: a small clickable text, for a star or a similar toggle. It returns a text handle (`set`, `color`), so the label changes in place. It reacts to any mouse button, on press. It is centered vertically in the row, drawn at 0.6 and 40 wide before that scale. It exists only on list rows. Verified in game (1.1.5024) with Cauldron Recipes 0.1.3: the stars draw, fit three Advanced recipes per row and toggle in every column.
+- `list:clear()` now also forgets the clicks of the marks of its rows.
+
+Inside the API (no mod code needs to change): the tab bar arrows and the marks share one hook on `WBP_TagSwitcher_C:OnMouseButtonDown` per menu, registered when the first arrow or mark is made. The arrows after this change are not verified in game yet (they only show when the tabs do not fit).
+
+Verified in game in a probe (game 1.1.5024, 2026-10-23): the tab widget as an invisible click target with a label on top, the star glyphs in the game's font, and three Advanced recipes plus their marks fitting in the two-thirds pane. Not verified: `row:mark` through the API in game, clicks in the second and third column, and the tab bar arrows after the hook change.
+
 ## [0.1.2] - 2026-10-23
 
 Additions:

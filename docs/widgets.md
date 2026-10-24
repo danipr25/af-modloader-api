@@ -29,11 +29,20 @@ A `WrapBox` (`/Script/UMG.WrapBox`, created with `StaticConstructObject` and out
 
 ### The tab widget as a button: `WBP_TagSwitcher_C`
 
-- Path: `/Game/Blueprints/WBP/Utility/WBP_TagSwitcher.WBP_TagSwitcher_C`, the class of the tab bar's buttons. Created with `Create`, with `Title`, `Txt_Title` and `Txt_Title_Highlight` emptied and its root `SizeBox` fixed with `SetMinDesiredWidth` and `SetMaxDesiredWidth`, it is a blank game-styled button with the tab hover. The API uses it for the two arrows of the paged tab bar (game 1.1.5024, probe 2026-10-22).
+- Path: `/Game/Blueprints/WBP/Utility/WBP_TagSwitcher.WBP_TagSwitcher_C`, the class of the tab bar's buttons. Created with `Create`, with `Title`, `Txt_Title` and `Txt_Title_Highlight` emptied and its root `SizeBox` fixed with `SetMinDesiredWidth` and `SetMaxDesiredWidth`, it is a blank game-styled button with the tab hover. The API uses it for the two arrows of the paged tab bar (game 1.1.5024, probe 2026-10-22) and, since 0.1.3, for `row:mark`.
 - A click calls `OnMouseButtonDown`; a post hook receives the widget as the context. It fires for every tab button in the game, so the handler must ignore widgets it did not create.
 - The arrow picture is the game's texture `/Game/Arts/UI/Interaction/T_UI_RightArrow.T_UI_RightArrow`, put on top in an `Image` with `SetBrushFromTexture` (loaded after loading a save; `LoadAsset` also returns it).
 - The arrows are put under the page box frame by re-adding the page box last in `Overlay_1` (`RemoveChild` then `AddChildToOverlay`): verified in game (2026-10-22, game 1.1.5024).
 - The API collapses and shows the arrows with `SetVisibility`. That call was verified on the tab buttons, not on the arrows themselves: not verified in game yet.
+
+### The tab widget as a small click target: `row:mark`
+
+Verified in a probe (game 1.1.5024, UE4SS experimental, 2026-10-23, five rounds, API 0.1.2) while looking for a star button inside the rows of a scrolling list. Only the last candidate worked:
+
+- `WBP_ButtonBase_C` (the game's button) in a `ScaleBox` at 0.7 inside a hand-made `ScrollBox` row: clicks reach `CommonButtonBase:HandleButtonClicked`, also after scrolling and after `ClearChildren` and a rebuild, and `SetButtonText` with ★ and ☆ works. But the button keeps a minimum width (about 175 on a 2000 px screenshot): `SetMinDimensions(0, 0)` changes nothing, and a `SizeBox` width override only narrows the slot while the button still draws at full width over its neighbours. Three Advanced recipes and three buttons do not fit.
+- `WBP_RecipeItemTile_C` with the item `None`: it shows the tile's default item icon (Wooden Pulley) under the label, and after a click the item card stays on the mouse. With `SetRenderOpacity(0)` only the label shows, but hovering brings up the Wooden Pulley item card, and `SetToolTip(nil)` (no error) does not remove it: that card is not a UMG tooltip. Not usable.
+- **`WBP_TagSwitcher_C`, what the API uses:** titles emptied, root `SizeBox` min and max desired width 40, `SetRenderOpacity(0)`, with a `TextBlock` on top (not hit-testable) in an `Overlay`, all in a `ScaleBox` at 0.6, slot aligned top in the probe (the API centers it vertically, as the player preferred in game on 2026-10-24). Only the label shows: no hover card or glow. Three Advanced recipes plus their marks fit in the two-thirds pane. Clicks reach the post hook on `OnMouseButtonDown` and toggled the label. The probe tested clicks in the first column only; the API's marks were then verified in every column (2026-10-24).
+- ★ (U+2605) and ☆ (U+2606) draw in the game's text font, in a `TextBlock` and as a button label.
 
 ### `WBP_IconButton_C`
 
