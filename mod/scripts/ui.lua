@@ -234,7 +234,9 @@ end
 --        owner = mod id for logs, log = function(text), clicks = the click router (clicks.lua),
 --        onTileCreated = function(class) called after a tile of that class was made,
 --        onMarkCreated = function(class) called after a mark (row:mark) of that tab widget class was made,
---        kind = "page" (default) or "section": names the page in error messages }
+--        kind = "page" (default) or "section": names the page in error messages,
+--        textColor = { R, G, B, A } (optional): the color every text starts with, for pages on a light background
+--        (the cauldron panel); text:color still changes it }
 -- Returns the page handle for the mod and a session table: session.alive turns false when the page is rebuilt, and
 -- session.inputs lists the inputs whose changes must be polled ({ read, last, onChange }).
 function ui.newPage(ctx)
@@ -353,6 +355,14 @@ function ui.newPage(ctx)
   local function makeText(str, add, extraCheck, wrap, small)
     local widget = ui.construct(CLASS.text, ctx.tree)
     widget:SetText(FText(tostring(str)))
+    if ctx.textColor then
+      local okColor, colorProblem = pcall(function()
+        widget:SetColorAndOpacity({ SpecifiedColor = ctx.textColor, ColorUseRule = 0 })
+      end)
+      if not okColor then
+        ctx.log(string.format("mod %s: the default text color could not be set: %s", ctx.owner, tostring(colorProblem)))
+      end
+    end
     if wrap then
       local ok, problem = pcall(function()
         widget:SetAutoWrapText(true)

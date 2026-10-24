@@ -1,6 +1,6 @@
 # API reference
 
-AF Mod Loader API 0.1.3 for mod authors. Game 1.1.5024, UE4SS 1181, AF Mod Loader 0.1.0.
+AF Mod Loader API 0.1.4 for mod authors. Game 1.1.5024, UE4SS 1181, AF Mod Loader 0.1.0.
 
 Each function says what is **verified in game** and what is **not verified yet**. Nothing marked "not verified" has run in the game: it is written from the UE4SS and Unreal Engine documentation, wrapped so that a failure is logged instead of crashing, and waits for the in-game test. Verified findings are recorded in [tab-menu.md](tab-menu.md), [catalog-menu.md](catalog-menu.md) and [console.md](console.md).
 
@@ -16,7 +16,7 @@ The API is 0.x until 1.0. A patch version (0.1.1) fixes things or adds functions
 
 `api.version` is the installed version as text, like `"0.1.0"`.
 
-Raise the lower bound to the first version that has every call your mod uses. Every call in this reference is in 0.1.0, so `>=0.1.0 <0.2.0` is enough, except the ones that say "added in 0.1.1" (`page:columns`, `pane:clear`, and the `space` functions): a mod that uses one needs `>=0.1.1 <0.2.0`. The ones that say "added in 0.1.2" (the `divider` functions and the options of `page:columns`) need `>=0.1.2 <0.2.0`. The one that says "added in 0.1.3" (`row:mark`) needs `>=0.1.3 <0.2.0`. Later patch versions will say which version added what. Development builds before the first public release were numbered 0.1.1 to 0.1.7; 0.1.0 is the first public release, and the in-game verification records below that name those build numbers stay as they were written.
+Raise the lower bound to the first version that has every call your mod uses. Every call in this reference is in 0.1.0, so `>=0.1.0 <0.2.0` is enough, except the ones that say "added in 0.1.1" (`page:columns`, `pane:clear`, and the `space` functions): a mod that uses one needs `>=0.1.1 <0.2.0`. The ones that say "added in 0.1.2" (the `divider` functions and the options of `page:columns`) need `>=0.1.2 <0.2.0`. The one that says "added in 0.1.3" (`row:mark`) needs `>=0.1.3 <0.2.0`. The ones that say "added in 0.1.4" (`api.panels.tab`, `api.defer`) need `>=0.1.4 <0.2.0`. Later patch versions will say which version added what. Development builds before the first public release were numbered 0.1.1 to 0.1.7; 0.1.0 is the first public release, and the in-game verification records below that name those build numbers stay as they were written.
 
 ### Threads
 
@@ -34,7 +34,7 @@ Every function a mod gives the API (`build`, `run`, `onChange`, click callbacks)
 
 ### When to register
 
-`tabs.add`, `catalog.section` and `console.add` work only while your mod's entrypoint (`scripts/main.lua`) runs, at its top level. Calls made after the API has sealed its registry (at the first game start, or the first time the TAB menu or the V menu is built, which is after every entrypoint) raise an error that says so. This keeps the tab order fixed and lets the API decide about the console after every mod has registered.
+`tabs.add`, `panels.tab`, `catalog.section` and `console.add` work only while your mod's entrypoint (`scripts/main.lua`) runs, at its top level. Calls made after the API has sealed its registry (at the first game start, or the first time the TAB menu or the V menu is built, which is after every entrypoint) raise an error that says so. This keeps the tab order fixed and lets the API decide about the console after every mod has registered.
 
 ### Restarting mods and re-entrancy
 
@@ -110,6 +110,60 @@ end, { small = true })
 ```
 
 Status: `OnEntryClick(index)` on the V menu's tab bar, called from a button click through `ExecuteInGameThread`, is **verified in game in a probe** (2026-10-22, game 1.1.5024). The API's `select` is **not verified**.
+
+## Panels
+
+### `api.panels.tab(spec)` returns `tab` (added in 0.1.4)
+
+Adds a side tab to a game panel. The only panel in this version is the cauldron panel (the one that opens when the player uses a Normal or Advanced cauldron). The tab is drawn like the vertical tabs of the Z panel, left of the panel, under the game's own "Cauldron" tab, which always comes first. Clicking it hides the panel's content and shows your page; clicking "Cauldron" brings the game's content back.
+
+```lua
+local tab = api.panels.tab({
+  id = "recipes",        -- 1 to 32 characters: a-z, 0-9, "-" and "_". Unique within your mod.
+  panel = "cauldron",    -- optional, "cauldron" is the only value and the default
+  title = "Recipes",     -- the tab's text, 1 to 40 characters, unique among the tabs of that panel.
+                         -- "Cauldron" is the game's and cannot be used. Long titles shrink to fit the tab.
+  build = function(page, info)
+    -- info.actor      the cauldron the panel shows (a game object)
+    -- info.kind       "normal" (3 slots) or "advanced" (2 slots)
+    -- info.component  the cauldron's CauldronFacilityComponent (nil if it could not be read)
+    page:text("Cauldron kind: " .. info.kind)
+    local row = page:row()
+    row:button("Back", function()
+      info.showGame()   -- go back to the Cauldron tab
+    end)
+    row:button("Apply", function()
+      -- The click runs inside a game hook: do game work later, and check the panel is still the same one.
+      api.defer(function()
+        if not info.isCurrent() then
+          return -- the panel was closed or shows another cauldron by now
+        end
+        -- ... change the cauldron here, with the game's own calls ...
+        info.showGame()
+      end)
+    end)
+  end,
+})
+
+-- Later, for example after a toggle changed what the page should show:
+tab:refresh()
+```
+
+What you get:
+
+- `build(page, info)` runs every time the player switches to your tab, so the data is fresh. `page` has the same widgets as a menu tab's page (see [Page widgets](#page-widgets)), and texts start dark because the panel's background is light (`text:color` still changes it). The page is 420 high and does not grow: use `page:list()` for anything long, it scrolls. `onChange` of an `input` works while your page shows.
+- `info.showGame()` switches back to the Cauldron tab (it does nothing once `info` is stale). `info.isCurrent()` is true only while the panel is open, on the same cauldron and the same open as when `build` ran: a click callback that applies something later must check it first. `info` is read-only and is made again on each build.
+- `tab:refresh()` runs `build` again now if your tab is the one showing, and does nothing otherwise. Like the refresh of a menu tab, it is refused with a log line when called while a page is being built; update existing handles instead.
+- Several mods can add tabs: they appear in registration order. A duplicate id or title is refused with a log line and you get a tab that does nothing. Invalid arguments raise an error. Registering is only possible while your entrypoint runs.
+- **The page never outlives its panel.** Every time the panel opens or closes, your page is killed (its handles stop working, its clicks are dropped), the game's content and title are restored and the Cauldron tab is selected. Your callbacks are not called after the panel closes or after the world changes.
+- An unknown kind of cauldron (the panel's actor is neither the Normal nor the Advanced one) shows no mod tabs and writes one line to `UE4SS.log`. If the game's panel is not built as expected, no tab is added and one line says why.
+- The API does not change cauldrons. `info.component` is the game's `CauldronFacilityComponent`; what a mod does with it is its own business and must be stated in its README, and anything that changes a save must run only when the player clicks. Never walk a game array with `ipairs` (it crashed the game in a probe): index it from 1 to `#array`.
+
+Status: the mechanism (the panel's structure, the hooks, the tab look and layout, a page with a search box and a scrolling list, resetting on open and close) is **verified in game in a probe** (2026-10-24, game 1.1.5024, see [widgets.md](widgets.md)). The API's own implementation is **not verified in game yet**, and neither is the Advanced cauldron with the tabs.
+
+### `api.defer(fn)` (added in 0.1.4)
+
+Runs `fn` on the game thread soon, never inside the caller. Use it from a click callback or a hook for work that changes game objects. An error in `fn` is written to `UE4SS.log` with your mod id. It is `ExecuteInGameThread` with the error logging; that call is verified in game, `api.defer` itself is not.
 
 ## Item sheet sections
 
@@ -474,6 +528,9 @@ Status: **verified in game** with a throwaway mod (the console opens with both k
 
 | Hook or object | Used for | Status |
 |---|---|---|
+| `WBP_CauldronPanel_C:PostSetContextActor` and `BP_OnDeactivated` (`/Game/Blueprints/WBP/FurnitureInfo/`) | Add the side tabs when a cauldron panel opens (once per panel instance) and reset them on every open and close | both fire on every open and close, verified in a probe (2026-10-24, game 1.1.5024); registered with retries until the class loads |
+| `WBP_CauldronPanel_C` members `WidgetTree`, `ContextActor`, `CauldronComp`, `Txt_FacilityTitle`; the Z panel's `WBP_SkillPointPanel_C:WidgetTree.SizeBox_71`, `Border_110`, `CommonTextBlock_122`, `ScaleBox_1` | The cauldron panel's structure and the side tab look | read and copied in a probe (2026-10-24, game 1.1.5024), see [widgets.md](widgets.md) |
+| `Widget:SetRenderTranslation`, `Border:SetBrushColor`, `Border:SetContent`, `Widget:GetParent` | Moving the tabs left of the panel, the selected tab's tint, the panel's content overlay, the check that the structure is still ours | `SetRenderTranslation`, `SetBrushColor` and `SetContent` verified in a probe (2026-10-24); `GetParent` not verified |
 | `WBP_PlayerGearPanel_C:BP_OnActivated` and `BP_OnDeactivated` | Add tabs when the TAB menu opens; start and stop the input polling | hookable, verified in game |
 | `WBP_CatalogPanel_C:BP_OnActivated` and `BP_OnDeactivated` (`/Game/Blueprints/WBP/CatalogPanel/`) | Add tabs when the V menu opens; start and stop the input polling | `BP_OnActivated` hookable and fires on every open, verified in a probe (2026-10-22, game 1.1.5024); registered when the class appears (it is not loaded at start), that registration is not verified |
 | `WBP_TagSwitcherGroup_C:PreConstruct` | Notice the tab bar being rebuilt by the game; also tells the API that the V menu's class exists | hookable, verified in game; firing for the V menu's group is not verified |
