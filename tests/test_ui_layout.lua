@@ -513,6 +513,35 @@ return {
       lu.assertEquals(callsOf(ofClass(ui.CLASS.scale)[2], "SetUserSpecifiedScale")[1][1], 0.6)
     end,
 
+    testRowItemScaleWrapsTheTileInAScaleBoxAndIsChecked = function()
+      local page = newPage()
+      local row = page:row()
+      row:item("Wood", nil, { scale = 0.6 })
+      local box = ofClass(ui.CLASS.scale)[1]
+      lu.assertEquals(callsOf(box, "SetUserSpecifiedScale")[1][1], 0.6)
+      lu.assertEquals(#ofClass("tile"), 1)
+      lu.assertEquals(#callsOf(box, "AddChild"), 1)
+      row:item("Clay")
+      lu.assertEquals(#ofClass(ui.CLASS.scale), 1) -- no scale, no box
+      for _, bad in ipairs({ 0, -1, 3, "big" }) do
+        lu.assertErrorMsgContains("'scale' must be a number", row.item, row, "Wood", nil, { scale = bad })
+      end
+      -- A list row takes a scale too, but not onClick.
+      local listRow = page:list():row()
+      listRow:item("Wood", nil, { scale = 0.8 })
+      lu.assertErrorMsgContains("only rows of a page", listRow.item, listRow, "Wood", nil, { onClick = function() end })
+    end,
+
+    testRowItemWithoutTheTileClassShowsNothingAndLogsOnce = function()
+      local page = newPage()
+      local row = page:row()
+      fake.missing[ui.CLASS.tile] = true
+      row:item("Wood")
+      row:item("Clay")
+      lu.assertEquals(#ofClass("tile"), 0)
+      lu.assertEquals(logsWith("item tile class"), 1)
+    end,
+
     testBadDividerHeadingsAreRejectedAtTheModsCall = function()
       local page = newPage()
       local pane = page:columns({ 1, 2 })[1]

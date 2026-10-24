@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "id": "af-modloader-api",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "name": "AF Mod Loader API",
-  "description": "Shared API for Alchemy Factory mods: tabs in the TAB menu and the V menu, item sheet sections, page widgets and console commands.",
+  "description": "Shared API for Alchemy Factory mods: tabs in the TAB menu and the V menu, side tabs on the cauldron panel, item sheet sections, page widgets and console commands.",
   "authors": ["af-modloader contributors"],
   "license": "MIT",
   "entrypoint": "scripts/main.lua",

@@ -2,6 +2,18 @@
 
 All notable changes to AF Mod Loader API. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). While the version is 0.x, a patch version fixes things or adds functions without breaking mods, and a minor version may break them and says how here.
 
+## [0.1.4] - 2026-10-24
+
+Additions:
+
+- `api.panels.tab(spec)`: side tabs on the game's cauldron panel, styled like the vertical tabs of the Z panel (Research / Upgrade). The tab's page uses the same widgets as the menu tabs (`text`, `input` with `onChange`, `list`, `row`, `button`, `divider`...), starts with dark text because the panel is light, and gets `info` with the cauldron (`actor`, `kind` = `"normal"` or `"advanced"`, `component`), `info.showGame()` and `info.isCurrent()`. The returned handle has `refresh()`. See [api.md](docs/api.md).
+- `row:item(name, count, { scale = 0.6 })`: the optional `scale` draws the item tile smaller or larger (a ScaleBox, above 0 and up to 2), in page rows and list rows. `row:item` now also loads the game's tile class itself if no menu has been opened yet, and shows the row without the tile (one log line) if the class cannot be found.
+- `api.defer(fn)`: runs a function on the game thread later, out of the caller (a click callback, for example). Errors are logged with the mod id.
+
+Inside the API: pages shown on a game panel can start their texts in a given color (used by the cauldron panel only). Nothing else changes for existing mods.
+
+Verified in game (1.1.5024, 2026-10-24) in a probe: the panel's structure and hooks, the tab layout, a page with a search box and a scrolling list, clicks, resetting on open and close. Two crashes found in the probe are avoided here: a game array is never walked with `ipairs`, and no game object is touched off the game thread (the input polling is a game-thread loop that stops when the panel closes or the world changes). Not verified: the tab tint (`SetBrushColor`) and the tab text's Fill alignment, the API's own implementation in game, the Advanced cauldron panel with the tabs, and multiplayer.
+
 ## [0.1.3] - 2026-10-24
 
 Additions:

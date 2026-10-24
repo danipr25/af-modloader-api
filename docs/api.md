@@ -1,6 +1,6 @@
 # API reference
 
-AF Mod Loader API 0.1.3 for mod authors. Game 1.1.5024, UE4SS 1181, AF Mod Loader 0.1.0.
+AF Mod Loader API 0.1.4 for mod authors. Game 1.1.5024, UE4SS 1181, AF Mod Loader 0.1.0.
 
 Each function says what is **verified in game** and what is **not verified yet**. Nothing marked "not verified" has run in the game: it is written from the UE4SS and Unreal Engine documentation, wrapped so that a failure is logged instead of crashing, and waits for the in-game test. Verified findings are recorded in [tab-menu.md](tab-menu.md), [catalog-menu.md](catalog-menu.md) and [console.md](console.md).
 
@@ -16,7 +16,7 @@ The API is 0.x until 1.0. A patch version (0.1.1) fixes things or adds functions
 
 `api.version` is the installed version as text, like `"0.1.0"`.
 
-Raise the lower bound to the first version that has every call your mod uses. Every call in this reference is in 0.1.0, so `>=0.1.0 <0.2.0` is enough, except the ones that say "added in 0.1.1" (`page:columns`, `pane:clear`, and the `space` functions): a mod that uses one needs `>=0.1.1 <0.2.0`. The ones that say "added in 0.1.2" (the `divider` functions and the options of `page:columns`) need `>=0.1.2 <0.2.0`. The one that says "added in 0.1.3" (`row:mark`) needs `>=0.1.3 <0.2.0`. Later patch versions will say which version added what. Development builds before the first public release were numbered 0.1.1 to 0.1.7; 0.1.0 is the first public release, and the in-game verification records below that name those build numbers stay as they were written.
+Raise the lower bound to the first version that has every call your mod uses. Every call in this reference is in 0.1.0, so `>=0.1.0 <0.2.0` is enough, except the ones that say "added in 0.1.1" (`page:columns`, `pane:clear`, and the `space` functions): a mod that uses one needs `>=0.1.1 <0.2.0`. The ones that say "added in 0.1.2" (the `divider` functions and the options of `page:columns`) need `>=0.1.2 <0.2.0`. The one that says "added in 0.1.3" (`row:mark`) needs `>=0.1.3 <0.2.0`. The ones that say "added in 0.1.4" (`api.panels.tab`, `api.defer`) need `>=0.1.4 <0.2.0`. Later patch versions will say which version added what. Development builds before the first public release were numbered 0.1.1 to 0.1.7; 0.1.0 is the first public release, and the in-game verification records below that name those build numbers stay as they were written.
 
 ### Threads
 
@@ -34,7 +34,7 @@ Every function a mod gives the API (`build`, `run`, `onChange`, click callbacks)
 
 ### When to register
 
-`tabs.add`, `catalog.section` and `console.add` work only while your mod's entrypoint (`scripts/main.lua`) runs, at its top level. Calls made after the API has sealed its registry (at the first game start, or the first time the TAB menu or the V menu is built, which is after every entrypoint) raise an error that says so. This keeps the tab order fixed and lets the API decide about the console after every mod has registered.
+`tabs.add`, `panels.tab`, `catalog.section` and `console.add` work only while your mod's entrypoint (`scripts/main.lua`) runs, at its top level. Calls made after the API has sealed its registry (at the first game start, or the first time the TAB menu, the V menu or a cauldron panel is built or opened, which is after every entrypoint) raise an error that says so. This keeps the tab order fixed and lets the API decide about the console after every mod has registered.
 
 ### Restarting mods and re-entrancy
 
@@ -111,6 +111,60 @@ end, { small = true })
 
 Status: `OnEntryClick(index)` on the V menu's tab bar, called from a button click through `ExecuteInGameThread`, is **verified in game in a probe** (2026-10-22, game 1.1.5024). The API's `select` is **not verified**.
 
+## Panels
+
+### `api.panels.tab(spec)` returns `tab` (added in 0.1.4)
+
+Adds a side tab to a game panel. The only panel in this version is the cauldron panel (the one that opens when the player uses a Normal or Advanced cauldron). The tab is drawn like the vertical tabs of the Z panel, left of the panel, under the game's own "Cauldron" tab, which always comes first. Clicking it hides the panel's content and shows your page; clicking "Cauldron" brings the game's content back.
+
+```lua
+local tab = api.panels.tab({
+  id = "recipes",        -- 1 to 32 characters: a-z, 0-9, "-" and "_". Unique within your mod.
+  panel = "cauldron",    -- optional, "cauldron" is the only value and the default
+  title = "Recipes",     -- the tab's text, 1 to 40 characters, unique among the tabs of that panel.
+                         -- "Cauldron" is the game's and cannot be used. Long titles shrink to fit the tab.
+  build = function(page, info)
+    -- info.actor      the cauldron the panel shows (a game object)
+    -- info.kind       "normal" (3 slots) or "advanced" (2 slots)
+    -- info.component  the cauldron's CauldronFacilityComponent (nil if it could not be read)
+    page:text("Cauldron kind: " .. info.kind)
+    local row = page:row()
+    row:button("Back", function()
+      info.showGame()   -- go back to the Cauldron tab
+    end)
+    row:button("Apply", function()
+      -- The click runs inside a game hook: do game work later, and check the panel is still the same one.
+      api.defer(function()
+        if not info.isCurrent() then
+          return -- the panel was closed or shows another cauldron by now
+        end
+        -- ... change the cauldron here, with the game's own calls ...
+        info.showGame()
+      end)
+    end)
+  end,
+})
+
+-- Later, for example after a toggle changed what the page should show:
+tab:refresh()
+```
+
+What you get:
+
+- `build(page, info)` runs every time the player switches to your tab, so the data is fresh. `page` has the same widgets as a menu tab's page (see [Page widgets](#page-widgets)), and texts start dark because the panel's background is light (`text:color` still changes it). The page is 420 high and does not grow: use `page:list()` for anything long, it scrolls. `onChange` of an `input` works while your page shows.
+- `info.showGame()` switches back to the Cauldron tab (it does nothing once `info` is stale). `info.isCurrent()` is true only while the panel is open, on the same cauldron and the same open as when `build` ran: a click callback that applies something later must check it first. `info` is read-only and is made again on each build.
+- `tab:refresh()` runs `build` again now if your tab is the one showing, and does nothing otherwise. Like the refresh of a menu tab, it is refused with a log line when called while a page is being built; update existing handles instead.
+- Several mods can add tabs: they appear in registration order. A duplicate id or title is refused with a log line and you get a tab that does nothing. Invalid arguments raise an error. Registering is only possible while your entrypoint runs.
+- **The page never outlives its panel.** Every time the panel opens or closes, your page is killed (its handles stop working, its clicks are dropped), the game's content and title are restored and the Cauldron tab is selected. Your callbacks are not called after the panel closes or after the world changes.
+- An unknown kind of cauldron (the panel's actor is neither the Normal nor the Advanced one) shows no mod tabs and writes one line to `UE4SS.log`. If the game's panel is not built as expected, no tab is added and one line says why.
+- The API does not change cauldrons. `info.component` is the game's `CauldronFacilityComponent`; what a mod does with it is its own business and must be stated in its README, and anything that changes a save must run only when the player clicks. Never walk a game array with `ipairs` (it crashed the game in a probe): index it from 1 to `#array`.
+
+Status: the mechanism (the panel's structure, the hooks, the tab layout, a page with a search box and a scrolling list, resetting on open and close) is **verified in game in a probe** (2026-10-24, game 1.1.5024, see [widgets.md](widgets.md)). The API's own implementation is **not verified in game yet**, and neither is the Advanced cauldron with the tabs.
+
+### `api.defer(fn)` (added in 0.1.4)
+
+Runs `fn` on the game thread soon, never inside the caller. Use it from a click callback or a hook for work that changes game objects. An error in `fn` is written to `UE4SS.log` with your mod id. `fn` can run after the panel (or anything else you were handling) is gone, so check `info.isCurrent()` first. It is `ExecuteInGameThread` with the error logging; that call is verified in game, `api.defer` itself is not.
+
 ## Item sheet sections
 
 ### `api.catalog.section(spec)` returns `true`, or `false` when refused
@@ -182,7 +236,7 @@ Status: the box, typing in it, `onChange` and the polling (with `LoopInGameThrea
 Adds a horizontal row on the page itself: things placed side by side.
 
 - `row:text(str)` adds text and returns a text handle (`:set`).
-- `row:item(itemName, count, opts)` adds the game's item tile, like in a list row. `opts` is optional and only for rows of a page: `{ onClick = function(itemName) end }` makes the tile clickable. A clickable tile is the game's `WBP_RecipeItemTile_C`, the one `grid:tile` makes, so it shows no count: `count` must be nil or 1, otherwise it is an error. A click with any mouse button calls `onClick(itemName)`, like on a grid tile. `opts` must be nil or a table whose `onClick` is a function, otherwise it is an error. A list row (`list:row()`) has no clickable tiles and rejects `opts` with an error. Unknown keys in `opts` are ignored. After a click that rebuilds the row, a second quick click hits whatever tile is now in that place: in game, a fast double click on one of two clickable tiles whose click rebuilds the row did not trigger the second tile (the interval is short), so there was one effect (2026-10-22, game 1.1.5024, API 0.1.5 and 0.1.6).
+- `row:item(itemName, count, opts)` adds the game's item tile, like in a list row. `opts` is optional: `{ scale = 0.6 }` (added in 0.1.4, a number above 0 and up to 2, also in list rows) draws the tile at that scale, with the room it takes scaled; on rows of a page `{ onClick = function(itemName) end }` makes the tile clickable. A clickable tile is the game's `WBP_RecipeItemTile_C`, the one `grid:tile` makes, so it shows no count: `count` must be nil or 1, otherwise it is an error. A click with any mouse button calls `onClick(itemName)`, like on a grid tile. `opts` must be nil or a table whose `onClick` is a function, otherwise it is an error. A list row (`list:row()`) has no clickable tiles and rejects `opts` with an error. Unknown keys in `opts` are ignored. After a click that rebuilds the row, a second quick click hits whatever tile is now in that place: in game, a fast double click on one of two clickable tiles whose click rebuilds the row did not trigger the second tile (the interval is short), so there was one effect (2026-10-22, game 1.1.5024, API 0.1.5 and 0.1.6).
 - `row:button(label, onClick, opts)` adds the game's button with `label` as its text and returns a button handle. `onClick()` is called when the player clicks it. `button:set(label)` changes the label. `button:enable(on)` enables (`true`) or disables (`false`) it: a disabled button is grey and ignores clicks. `on` must be a boolean, otherwise it is an error, also on a handle whose page was rebuilt; only a handle made on a page that was already gone does nothing and checks nothing. Buttons start enabled; call `enable(false)` right after adding the button to its row, and keep the handle to enable it again later. `opts` is optional: `{ small = true }` draws a smaller button (the game's button inside a `ScaleBox` at 0.7, with 16 of room at each side of its label, same handle and clicks; 0.6 and no extra room before 0.1.2). `opts` must be nil or a table whose `small` is a boolean, otherwise it is an error.
 - `row:arrow(direction, onClick)` adds a small arrow button, `direction` being `"previous"` (points left) or `"next"` (points right), anything else is an error. It is the game's button inside a `ScaleBox` at 0.6 with the game's gold arrow picture on top. The handle has only `enable(on)`: like `button:enable`, but the arrow is also grey when disabled and gold when enabled. If the picture cannot be found, the arrow is a small button labelled `<` or `>` and one line is logged.
 
@@ -276,7 +330,7 @@ Adds a scrolling list of rows.
 - `list:clear()` removes every row. Rows made before the call stop working, and (from 0.1.3) so do the clicks of their marks.
 - `list:row()` adds a row and returns it.
 - `row:text(str)` adds text to the row and returns a text handle (`:set`).
-- `row:item(itemName, count)` adds the game's item tile for the item, with its icon and the game's own tooltip. `itemName` is the item's name in the game's data (for example `"GentianNectar"`), `count` defaults to 1.
+- `row:item(itemName, count)` adds the game's item tile for the item, with its icon and the game's own tooltip. `itemName` is the item's name in the game's data (for example `"GentianNectar"`), `count` defaults to 1. An optional third argument `{ scale = 0.6 }` (added in 0.1.4) draws the tile at that scale. If the game's tile class cannot be found the row shows without the tile and one line is logged.
 - `row:mark(label, onClick)` (added in 0.1.3) adds a small clickable text to the row and returns a text handle (`set(label)` and `color(r, g, b, a)`, the same as `row:text`). `onClick()` is called when the player clicks it, with any mouse button, on press. It is for a star or a similar toggle: the mark stays where it is and `mark:set(...)` changes its label in place, without rebuilding the row. `label` must be a non-empty string and `onClick` a function, otherwise it is an error at your call. The mark is drawn at 0.6 of its size, is 40 wide before the 0.6 scale (not verified in game) and is aligned to the **top** of the row (not centered like the other things in a row), so next to tall item tiles it sits at the top right of the recipe. Its text has the default text color (white): color it with `mark:color(...)`. It exists **only on list rows**: page rows, pane rows and section rows have no `row:mark` (calling it there raises "attempt to call a nil value"). The clicks of a list's marks stop working when the list is cleared or the page is rebuilt, and on such a dead handle `set` and `color` do nothing. There is no hover or pressed look: the game's tab widget behind the text is invisible.
 
 ```lua
@@ -474,6 +528,9 @@ Status: **verified in game** with a throwaway mod (the console opens with both k
 
 | Hook or object | Used for | Status |
 |---|---|---|
+| `WBP_CauldronPanel_C:PostSetContextActor` and `BP_OnDeactivated` (`/Game/Blueprints/WBP/FurnitureInfo/`) | Add the side tabs when a cauldron panel opens (once per panel instance) and reset them on every open and close | both fire on every open and close, verified in a probe (2026-10-24, game 1.1.5024); registered with retries until the class loads |
+| `WBP_CauldronPanel_C` members `WidgetTree`, `ContextActor`, `CauldronComp`, `Txt_FacilityTitle`; the Z panel's `WBP_SkillPointPanel_C:WidgetTree.SizeBox_71`, `Border_110`, `CommonTextBlock_122`, `ScaleBox_1` | The cauldron panel's structure and the side tab look | read and copied in a probe (2026-10-24, game 1.1.5024), see [widgets.md](widgets.md) |
+| `Widget:SetRenderTranslation`, `Border:SetBrushColor`, `Border:SetContent`, `Widget:GetParent` | Moving the tabs left of the panel, the selected tab's tint, the panel's content overlay, the check that the structure is still ours | `SetRenderTranslation` and `SetContent` verified in a probe (2026-10-24); `SetBrushColor` (the tab tint), the tab text `ScaleBox` with Fill alignment and `GetParent` not verified |
 | `WBP_PlayerGearPanel_C:BP_OnActivated` and `BP_OnDeactivated` | Add tabs when the TAB menu opens; start and stop the input polling | hookable, verified in game |
 | `WBP_CatalogPanel_C:BP_OnActivated` and `BP_OnDeactivated` (`/Game/Blueprints/WBP/CatalogPanel/`) | Add tabs when the V menu opens; start and stop the input polling | `BP_OnActivated` hookable and fires on every open, verified in a probe (2026-10-22, game 1.1.5024); registered when the class appears (it is not loaded at start), that registration is not verified |
 | `WBP_TagSwitcherGroup_C:PreConstruct` | Notice the tab bar being rebuilt by the game; also tells the API that the V menu's class exists | hookable, verified in game; firing for the V menu's group is not verified |
