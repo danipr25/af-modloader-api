@@ -504,6 +504,7 @@ function Registry:use(AF)
     if type(fn) ~= "function" then
       error("api.defer needs a function: api.defer(function() ... end)", 2)
     end
+    -- Without the game module (only in tests, main.lua always sets runDeferred) the function runs at once.
     if registryRef.runDeferred then
       registryRef.runDeferred(owner, fn)
       return

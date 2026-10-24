@@ -411,7 +411,18 @@ function ui.newPage(ctx)
     }
   end
 
-  local function makeItem(hbox, name, count, extraCheck)
+  -- Puts a tile in its row, inside a ScaleBox when a scale is given (the tile keeps its real layout size scaled).
+  local function addTile(hbox, tile, scale)
+    if scale then
+      local box = scaleBox(ctx.tree, scale)
+      box:AddChild(tile)
+      centerSlot(hbox:AddChildToHorizontalBox(box))
+    else
+      centerSlot(hbox:AddChildToHorizontalBox(tile))
+    end
+  end
+
+  local function makeItem(hbox, name, count, extraCheck, scale)
     if type(name) ~= "string" or name == "" then
       error('row:item needs the item name as text, like "GentianNectar"', 3)
     end
@@ -419,16 +430,18 @@ function ui.newPage(ctx)
       error("row:item: the count must be a number", 3)
     end
     local library = StaticFindObject(CLASS.library)
-    local class = StaticFindObject(CLASS.tile)
-    if not isValid(library) or not isValid(class) then
-      error("the item tile class of the game was not found")
+    -- The class may not be loaded yet (a page built before any menu was opened): load it first.
+    local class = ui.findClass(CLASS.tile, ctx.log)
+    if not isValid(library) or not class then
+      warnOnce("item tile class", "the game's item tile class was not found, so row:item shows nothing")
+      return
     end
     local tile = library:Create(ctx.panel, class, ui.playerController())
     if not isValid(tile) then
       error("the game did not create an item tile")
     end
     tile:UpdateItemInfo(FName(name), count or 1, 0, false) -- the count (2nd argument) is verified only with 1
-    centerSlot(hbox:AddChildToHorizontalBox(tile))
+    addTile(hbox, tile, scale)
     return liveCheck(tile, "item tile", extraCheck)
   end
 
@@ -768,23 +781,33 @@ function ui.newPage(ctx)
         centerSlot(hbox:AddChildToHorizontalBox(widget))
       end, extraCheck, nil, small)
     end
-    -- opts (optional, page rows only): { onClick = function(name) } makes the tile clickable. It is then the recipe
-    -- tile of the grid, which shows no count: count must be nil or 1.
+    -- opts (optional): { scale = number } draws the tile at that scale (above 0, up to 2). Page rows only:
+    -- { onClick = function(name) } makes the tile clickable. It is then the recipe tile of the grid, which shows no
+    -- count: count must be nil or 1.
     function row.item(_, name, count, opts)
       if not rowLive() then
         return
       end
+      local usage = withButtons and "{ scale = number, onClick = function(name) end }" or "{ scale = number }"
       if opts ~= nil then
-        if not withButtons then
-          error("row:item: only rows of a page take options (a list row has no clickable tiles)", 2)
+        if type(opts) ~= "table" then
+          error("row:item takes an optional table " .. usage, 2)
         end
-        if type(opts) ~= "table" or (opts.onClick ~= nil and type(opts.onClick) ~= "function") then
-          error("row:item takes an optional table { onClick = function(name) end }", 2)
+        if opts.onClick ~= nil and not withButtons then
+          error("row:item: only rows of a page can have onClick (a list row has no clickable tiles)", 2)
+        end
+        if opts.onClick ~= nil and type(opts.onClick) ~= "function" then
+          error("row:item takes an optional table " .. usage, 2)
+        end
+        local s = opts.scale
+        if s ~= nil and (type(s) ~= "number" or s ~= s or s <= 0 or s > 2) then
+          error("row:item: 'scale' must be a number above 0 and up to 2, like { scale = 0.6 }", 2)
         end
       end
+      local scale = opts and opts.scale and (opts.scale + 0.0) or nil
       local onClick = opts and opts.onClick
       if onClick == nil then
-        makeItem(hbox, name, count, extraCheck)
+        makeItem(hbox, name, count, extraCheck, scale)
         return
       end
       if type(name) ~= "string" or name == "" then
@@ -794,7 +817,7 @@ function ui.newPage(ctx)
         error("row:item: a clickable tile shows no count, so the count must be nil or 1", 2)
       end
       local tile, class = createRecipeTile(name)
-      centerSlot(hbox:AddChildToHorizontalBox(tile))
+      addTile(hbox, tile, scale)
       registerClick(tile, extraCheck, function()
         onClick(name)
       end, nil, tag)

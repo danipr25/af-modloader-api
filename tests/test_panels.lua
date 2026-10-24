@@ -575,5 +575,86 @@ return {
       close(panel)
       lu.assertEquals(#built, 1)
     end,
+    testTheStructureIsBuiltOutOfTheOpenHookAndACloseBeforeItCancelsIt = function()
+      setupMod()
+      local queued = {}
+      _G.ExecuteInGameThread = function(fn)
+        queued[#queued + 1] = fn
+      end
+      local panel = newPanel("BP_PewterCauldron_C")
+      open(panel)
+      -- Nothing of the panel was changed inside the hook.
+      lu.assertEquals(panel.game.border:GetContent(), panel.game.content)
+      lu.assertFalse(mod.state.built)
+      close(panel)
+      for _, fn in ipairs(queued) do
+        fn()
+      end
+      lu.assertEquals(panel.game.border:GetContent(), panel.game.content)
+      -- Opened again, the deferred build runs once the panel is still open.
+      queued = {}
+      open(panel)
+      for _, fn in ipairs(queued) do
+        fn()
+      end
+      lu.assertTrue(mod.state.built)
+      lu.assertTrue(mod.state.active)
+    end,
+
+    testAFailureBeforeThePanelIsChangedIsSoftAndTriedAgainOnTheNextOpen = function()
+      setupMod()
+      local panel = newPanel("BP_PewterCauldron_C")
+      local original = _G.StaticConstructObject
+      _G.StaticConstructObject = function()
+        error("no widgets today")
+      end
+      open(panel)
+      open(panel)
+      lu.assertEquals(panel.game.border:GetContent(), panel.game.content)
+      lu.assertNil(mod.state.failed)
+      lu.assertEquals(logsWith("the panel was not changed"), 1)
+      _G.StaticConstructObject = original
+      open(panel)
+      lu.assertTrue(mod.state.built)
+    end,
+
+    testTheGameContentGetsItsOwnVisibilityBackAndAReopenKeepsTheNewTitle = function()
+      setupMod()
+      local panel = newPanel("BP_PewterCauldron_C")
+      panel.game.content.GetVisibility = function()
+        return 2 -- the game had it hit-test invisible
+      end
+      open(panel)
+      clickTab(2)
+      lu.assertEquals(panel.Txt_FacilityTitle.text, "Recipes")
+      clickTab(1)
+      lu.assertEquals(panel.game.content.visibility, 2)
+      lu.assertEquals(panel.Txt_FacilityTitle.text, "Pewter Cauldron")
+      -- A reopen after the game already wrote the next cauldron's title must not put the old one back.
+      clickTab(2)
+      panel.Txt_FacilityTitle.text = "Silver Cauldron"
+      open(panel)
+      lu.assertEquals(panel.Txt_FacilityTitle.text, "Silver Cauldron")
+    end,
+
+    testAFailingGetParentIsSkippedNotTreatedAsABrokenPanel = function()
+      setupMod()
+      local panel = newPanel("BP_PewterCauldron_C")
+      open(panel)
+      mod.state.body.GetParent = function()
+        error("no such function")
+      end
+      open(panel)
+      open(panel)
+      lu.assertNil(mod.state.failed)
+      lu.assertTrue(mod.state.active)
+      lu.assertEquals(logsWith("unverified GetParent"), 1)
+      -- A real mismatch still counts.
+      mod.state.body.GetParent = function()
+        return newWidget("elsewhere")
+      end
+      open(panel)
+      lu.assertTrue(mod.state.failed)
+    end,
   },
 }

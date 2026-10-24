@@ -137,11 +137,11 @@ Still not verified: the `LoadAsset` fallback when a style or widget class is not
 
 ## The cauldron panel and its side tabs (API 0.1.4)
 
-Verified in a probe (game 1.1.5024, UE4SS experimental, 2026-10-24, four rounds with the user). The API's own implementation of this is not verified in game yet.
+Verified in a probe (game 1.1.5024, UE4SS experimental, 2026-10-24, three rounds with the user), except what is marked "not verified". The API's own implementation of this is not verified in game yet.
 
 ### Hooks and facts
 
-- Class `/Game/Blueprints/WBP/FurnitureInfo/WBP_CauldronPanel.WBP_CauldronPanel_C`, one class for both cauldrons. `:PostSetContextActor` fires on every open (also when another cauldron replaces the shown one) and `:BP_OnDeactivated` on every close. Hooks put on these before the class loads fail, so the API retries.
+- Class `/Game/Blueprints/WBP/FurnitureInfo/WBP_CauldronPanel.WBP_CauldronPanel_C`, one class for both cauldrons. `:PostSetContextActor` fires on every open and `:BP_OnDeactivated` on every close. Hooks put on these before the class loads fail, so the API retries.
 - `ContextActor` is `BP_PewterCauldron_C` (Normal, 3 slots) or `BP_SilverCauldron_C` (Advanced, 2 slots). `CauldronComp` is the `CauldronFacilityComponent`; `Txt_FacilityTitle` is the title text.
 - The panel instance is reused across opens; loading a save makes a new one.
 - `GetCachedGeometry` returns zero sizes through UE4SS: do not rely on it.
@@ -151,13 +151,14 @@ Verified in a probe (game 1.1.5024, UE4SS experimental, 2026-10-24, four rounds 
 
 `WBP_SkillPointPanel_C` (Research / Upgrade): a `HorizontalBox` [ `VerticalBox_100` (the side tabs), `Overlay_0` (the content) ]. One tab is `SizeBox_71` (width 128, height 92) > `Border_110` (`T_UI_BG_Inventory_Button`, 256 x 195, margin 0.49 0 0.49 0, padding 30 0 10 0) > `ScaleBox_1` (stretch 2) > `CommonTextBlock_122` (style `BP_CUI_TextStyle_C`). The templates exist right after loading a save, without opening the Z panel (verified 2026-10-24); the API loads the class with `LoadAsset` if they are missing, and without them it adds no tabs and logs one line.
 
-The API copies, per tab: the `SizeBox` width and height, the `Border`'s brush and padding, the `ScaleBox`'s stretch and scale, and the text style (`SetStyle`). The text's `ScaleBox` has Fill alignment so a long title is scaled down to the fixed width. All tabs use `Border_110`'s art; the selected one has `BrushColor` 1.0, the others 0.75. Each tab has the game's tab widget (`WBP_TagSwitcher_C`, made invisible as for `row:mark`) on top to take the click, through `OnMouseButtonDown`.
+The API copies, per tab: the `SizeBox` width and height, the `Border`'s brush and padding, the `ScaleBox`'s stretch and scale, and the text style (`SetStyle`). All tabs use `Border_110`'s art. **Not verified in game** (round 4, installed but not confirmed): the text's `ScaleBox` with Fill alignment so that a long title is scaled down to the fixed width, and the tint through `SetBrushColor` (selected 1.0, the others 0.75). Each tab has the game's tab widget (`WBP_TagSwitcher_C`, made invisible as for `row:mark`) on top to take the click, through `OnMouseButtonDown`.
 
 ### Layout
 
 - The panel's body (`SizeBox` > `Border`) goes into an `Overlay` together with a `VerticalBox` of the tabs, aligned left and top and moved with `SetRenderTranslation` by -128 in X (the tab width) and +30 in Y (picked with the user), so the tabs sit left of the body, a little below the top, and the body keeps its place.
 - The `Border`'s content becomes an `Overlay` [ `VerticalBox_128` (never touched), our page ]. Switching tabs sets `VerticalBox_128`'s visibility (Visible / Collapsed) as a whole: the game's children are never changed. Our page is a `SizeBox` with a height of 420 (it does not grow with its content) holding a `VerticalBox`, which the page builder fills. A `ScrollBox` in a fill slot scrolls inside it.
 - Text starts dark (R 0.022, G 0.033, B 0.053): the panel's background is light.
+- `row:item(name, count, { scale = 0.8 })` draws a tile inside a `ScaleBox` at that scale, the technique of the probe's rows (product tile 0.8, input tiles 0.6). The row layout the user chose for recipe lists is one line: product tile at 0.8, name, input tiles at 0.6, a `row:mark` "Use".
 - Verified in the probe: a search box (`EditableTextBox` with the style copied from `Edit_BlueprintSearch`), a scrolling list of 30 rows of one line each (product tile at 0.8, name, three input tiles at 0.6, a `row:mark` style "Use" label), clicks on the marks, and going back to the Cauldron tab on every open and close.
 
 ### Hard lessons

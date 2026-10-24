@@ -360,22 +360,41 @@ function Panels:buildStructure(state)
   local tree = parts.tree
   state.tree = tree
 
-  -- Everything is created first, so a failure here leaves the panel as the game made it.
-  local made = { self:makeTab(state, GAME_TAB, templates, tabClass) }
-  for _, entry in ipairs(list) do
-    made[#made + 1] = self:makeTab(state, entry.title, templates, tabClass)
+  -- Everything is created first, so a failure here leaves the panel as the game made it: it is a soft failure, said
+  -- once, and the next open tries again.
+  local okPrepare, prepared = pcall(function()
+    local made = { self:makeTab(state, GAME_TAB, templates, tabClass) }
+    for _, entry in ipairs(list) do
+      made[#made + 1] = self:makeTab(state, entry.title, templates, tabClass)
+    end
+    local tabsBox = ui.construct(ui.CLASS.vbox, tree)
+    for _, tab in ipairs(made) do
+      tabsBox:AddChildToVerticalBox(tab.size)
+    end
+    local pageHolder = ui.construct(ui.CLASS.sizeBox, tree)
+    pageHolder:SetHeightOverride(PAGE_HEIGHT)
+    local pageRoot = ui.construct(ui.CLASS.vbox, tree)
+    pageHolder:AddChild(pageRoot)
+    pageHolder:SetVisibility(COLLAPSED)
+    return {
+      made = made,
+      tabsBox = tabsBox,
+      pageHolder = pageHolder,
+      pageRoot = pageRoot,
+      inner = ui.construct(ui.CLASS.overlay, tree),
+      outer = ui.construct(ui.CLASS.overlay, tree),
+    }
+  end)
+  if not okPrepare then
+    return nil, "the side tabs could not be prepared (" .. tostring(prepared) .. "), the panel was not changed"
   end
-  local tabsBox = ui.construct(ui.CLASS.vbox, tree)
-  for _, tab in ipairs(made) do
-    tabsBox:AddChildToVerticalBox(tab.size)
-  end
-  local pageHolder = ui.construct(ui.CLASS.sizeBox, tree)
-  pageHolder:SetHeightOverride(PAGE_HEIGHT)
-  local pageRoot = ui.construct(ui.CLASS.vbox, tree)
-  pageHolder:AddChild(pageRoot)
-  pageHolder:SetVisibility(COLLAPSED)
-  local inner = ui.construct(ui.CLASS.overlay, tree)
-  local outer = ui.construct(ui.CLASS.overlay, tree)
+  local made, tabsBox, pageHolder, pageRoot = prepared.made, prepared.tabsBox, prepared.pageHolder, prepared.pageRoot
+  local inner, outer = prepared.inner, prepared.outer
+  -- The visibility the game gave its content, restored when the Cauldron tab is shown again.
+  local okVisibility, visibility = pcall(function()
+    return parts.content:GetVisibility()
+  end)
+  state.contentVisibility = okVisibility and type(visibility) == "number" and visibility or VISIBLE
 
   -- Then the panel is changed: the content and our page share an Overlay in the Border, and the tabs sit in an
   -- Overlay with the panel's body, moved left by the tab width.
@@ -425,15 +444,28 @@ end
 
 -- True while the structure we made is still in the panel: the content in our overlay inside the border, the body in
 -- ours. If the game rebuilt any of it, the tabs are not used any more for this panel.
-local function intact(state)
+local function intact(state, log)
   local ok, same = pcall(function()
     return isValid(state.outer)
       and isValid(state.tabsBox)
       and isValid(state.pageRoot)
       and addressOf(state.border:GetContent()) == addressOf(state.inner)
-      and addressOf(state.body:GetParent()) == addressOf(state.outer)
   end)
-  return ok and same == true
+  if not (ok and same == true) then
+    return false
+  end
+  -- GetParent is not verified in game: if it raises, that check is skipped (said once), only a mismatch counts.
+  local okParent, parent = pcall(function()
+    return state.body:GetParent()
+  end)
+  if not okParent then
+    if not state.parentNoted then
+      state.parentNoted = true
+      log("could not check where the cauldron panel's body is (unverified GetParent): the check is skipped")
+    end
+    return true
+  end
+  return addressOf(parent) == addressOf(state.outer)
 end
 
 -- ---------------------------------------------------------------------------------------------------------------
@@ -473,17 +505,20 @@ function Panels:showGame(state)
     return
   end
   pcall(function()
-    state.content:SetVisibility(VISIBLE)
+    state.content:SetVisibility(state.contentVisibility or VISIBLE)
   end)
   pcall(function()
     state.pageHolder:SetVisibility(COLLAPSED)
   end)
   if state.titleChanged then
     state.titleChanged = false
+    -- Only if the widget still shows our tab's title: a reopen may already have given it the new cauldron's.
     local title = state.gameTitle
-    pcall(function()
-      state.titleWidget:SetText(FText(title))
-    end)
+    if textOf(state.titleWidget) == state.modTitle then
+      pcall(function()
+        state.titleWidget:SetText(FText(title))
+      end)
+    end
   end
   paintTabs(state, GAME_TAB)
 end
@@ -594,6 +629,7 @@ function Panels:showTab(state, record)
   end)
   if state.titleChanged then
     pcall(function()
+      state.modTitle = record.entry.title
       state.titleWidget:SetText(FText(record.entry.title))
     end)
   end
@@ -645,7 +681,9 @@ function Panels:deactivate(state)
   end
 end
 
--- PostSetContextActor: the panel was opened for a cauldron (also when another cauldron replaces the shown one).
+-- PostSetContextActor: the panel was opened for a cauldron (the hook is known to fire on every open).
+-- The panel is only read and reset here. The first time for a panel instance the structure is built a moment later,
+-- out of the game's callback (completeOpen): rebuilding the panel inside it is not safe.
 function Panels:onOpen(panel)
   self.registry:seal()
   if #self.registry:panelTabs(PANEL_ID) == 0 or not isValid(panel) then
@@ -655,6 +693,7 @@ function Panels:onOpen(panel)
   local actor = contextActor(panel)
   local actorClass = actor and classNameOf(actor) or nil
   local kind = actorClass and KINDS[actorClass] or nil
+  state.openId = nil
   if not kind then
     if state.built then
       self:deactivate(state)
@@ -672,29 +711,7 @@ function Panels:onOpen(panel)
   if state.failed then
     return
   end
-  if not state.built then
-    local okBuild, built, reason = pcall(self.buildStructure, self, state)
-    if not okBuild then
-      state.failed = true
-      self.log(
-        "could not add the side tabs to the cauldron panel, it may look odd until the save is loaded again: "
-          .. tostring(built)
-      )
-      return
-    end
-    if not built then
-      self:note("structure " .. tostring(reason), "no side tabs on the cauldron panel: " .. tostring(reason))
-      return
-    end
-    self.log(
-      string.format(
-        "cauldron panel: added %d side tab(s) for mods (%s cauldron, %d slot(s) expected)",
-        #state.tabs - 1,
-        kind,
-        kind == "normal" and 3 or 2
-      )
-    )
-  elseif not intact(state) then
+  if state.built and not intact(state, self.log) then
     state.failed = true
     self.log(
       "the game changed the cauldron panel after the side tabs were added: they are off until the save is loaded again"
@@ -702,10 +719,57 @@ function Panels:onOpen(panel)
     return
   end
   self.openCounter = self.openCounter + 1
-  state.openId = self.openCounter
+  local openId = self.openCounter
+  state.openId = openId
   state.actor = actor
   state.actorAddress = addressOf(actor)
   state.kind = kind
+  state.active = false
+  if self.router.state == state then
+    self.router.state = nil
+  end
+  if state.built then
+    self:activate(state)
+  else
+    ExecuteInGameThread(function()
+      self:guarded("open", function()
+        self:completeOpen(state, openId)
+      end)
+    end)
+  end
+end
+
+-- The deferred part of the first open of a panel instance. Does nothing when the panel was closed, replaced or
+-- opened again in the meantime.
+function Panels:completeOpen(state, openId)
+  if self.state ~= state or state.openId ~= openId or state.built or state.failed or not isValid(state.panel) then
+    return
+  end
+  local okBuild, built, reason = pcall(self.buildStructure, self, state)
+  if not okBuild then
+    state.failed = true
+    self.log(
+      "could not add the side tabs to the cauldron panel, it may look odd until the save is loaded again: "
+        .. tostring(built)
+    )
+    return
+  end
+  if not built then
+    self:note("structure " .. tostring(reason), "no side tabs on the cauldron panel: " .. tostring(reason))
+    return
+  end
+  self.log(
+    string.format(
+      "cauldron panel: added %d side tab(s) for mods (%s cauldron, %d slot(s) expected)",
+      #state.tabs - 1,
+      state.kind,
+      state.kind == "normal" and 3 or 2
+    )
+  )
+  self:activate(state)
+end
+
+function Panels:activate(state)
   self:showGame(state)
   setTabsVisible(state, true)
   state.active = true
@@ -715,8 +779,11 @@ end
 -- BP_OnDeactivated: the panel closed. Nothing may stay of the page, and the loop stops.
 function Panels:onClose(panel)
   local state = self.state
-  if state and state.built and addressOf(panel) == state.address then
-    self:deactivate(state)
+  if state and addressOf(panel) == state.address then
+    state.openId = nil -- a build waiting to run for this open is cancelled
+    if state.built then
+      self:deactivate(state)
+    end
   end
 end
 
