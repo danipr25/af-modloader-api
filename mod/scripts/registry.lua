@@ -11,6 +11,10 @@ local TITLE_MAX = 40
 local TAB_ID_MAX = 32
 -- The menus a tab can go in: "tab" is the TAB menu (the default), "catalog" the V menu (the item catalog).
 local MENUS = { tab = true, catalog = true }
+-- The game panels a mod can put side tabs on (api.panels.tab).
+local PANELS = { cauldron = true }
+-- The side tab of the game's own content: a mod tab with this title (any case) could not be told apart from it.
+local PANEL_RESERVED_TITLE = "cauldron"
 -- Titles of the game's own tabs, per menu: a mod tab with one of these could not be told apart from the game's.
 local GAME_TITLES = {
   tab = { Player = true, World = true, Recognition = true },
@@ -79,6 +83,8 @@ function registry.new(options)
   self.tabList = {} -- tab entries in registration order
   self.tabsByKey = {} -- "<mod id>/<tab id>" -> entry
   self.tabsByTitle = {} -- title -> entry (titles are unique across both menus)
+  self.panelTabList = {} -- panel side tabs in registration order
+  self.panelTabsByKey = {} -- "<mod id>/<tab id>" -> entry
   self.sectionList = {} -- item sheet sections in registration order
   self.sectionsByKey = {} -- "<mod id>/<section id>" -> entry
   self.commandList = {}
@@ -89,10 +95,16 @@ function registry.new(options)
   --   onCommandAdded(entry) registers the name with the console
   --   onTabRefresh(entry)   rebuilds the page of a tab
   --   onTabSelect(entry)    selects the tab in its menu; returns whether it was scheduled
+  --   onPanelTabAdded(entry)   a panel side tab was registered
+  --   onPanelTabRefresh(entry) rebuilds the page of a panel side tab
+  --   runDeferred(owner, fn)   runs fn on the game thread later (api.defer)
   --   worldCurrent()        the current world (a fresh copy) or nil
   self.onCommandAdded = nil
   self.onTabRefresh = nil
   self.onTabSelect = nil
+  self.onPanelTabAdded = nil
+  self.onPanelTabRefresh = nil
+  self.runDeferred = nil
   self.worldCurrent = nil
   return self
 end
@@ -179,6 +191,73 @@ function Registry:addTab(owner, spec)
   self.tabList[#self.tabList + 1] = entry
   self.tabsByKey[key] = entry
   self.tabsByTitle[title] = entry
+  return entry
+end
+
+-- Side tabs of a game panel (api.panels.tab). Returns an entry, or nil plus the problem and its kind (like addTab).
+function Registry:addPanelTab(owner, spec)
+  if self.sealed then
+    return nil, lateMessage("panels.tab"), "late"
+  end
+  if type(spec) ~= "table" then
+    return nil,
+      'panels.tab needs a table: { id = "recipes", title = "Recipes", build = function(page, info) ... end }',
+      "invalid"
+  end
+  local panel = spec.panel
+  if panel == nil then
+    panel = "cauldron"
+  elseif type(panel) ~= "string" or not PANELS[panel] then
+    return nil, "panels.tab: 'panel' must be \"cauldron\" (the default), not " .. tostring(panel), "invalid"
+  end
+  local id, title = spec.id, spec.title
+  if type(id) ~= "string" or #id > TAB_ID_MAX or not id:find("^[a-z0-9][a-z0-9_-]*$") then
+    return nil,
+      "panels.tab: 'id' must be 1 to " .. TAB_ID_MAX .. " lowercase letters, digits, '-' or '_', like \"recipes\"",
+      "invalid"
+  end
+  if type(title) ~= "string" or title:find("^%s*$") or #title > TITLE_MAX then
+    return nil, "panels.tab: 'title' must be text of 1 to " .. TITLE_MAX .. " characters", "invalid"
+  end
+  if type(spec.build) ~= "function" then
+    return nil, "panels.tab: 'build' must be a function(page, info) that fills the page", "invalid"
+  end
+  if title:gsub("^%s+", ""):gsub("%s+$", ""):lower() == PANEL_RESERVED_TITLE then
+    return nil,
+      string.format('panels.tab: the title "%s" is the game\'s own tab of that panel, choose another', title),
+      "invalid"
+  end
+  local key = owner .. "/" .. id
+  if self.panelTabsByKey[key] then
+    return nil, string.format("mod %s already added a panel tab with id '%s'", owner, id), "duplicate"
+  end
+  for _, other in ipairs(self.panelTabList) do
+    if other.panel == panel and other.title == title then
+      -- The title is the tab's label on the panel, so two tabs of one panel cannot share it.
+      return nil,
+        string.format(
+          'mod %s cannot add a panel tab titled "%s": mod %s already uses that title',
+          owner,
+          title,
+          other.owner
+        ),
+        "duplicate"
+    end
+  end
+  local entry = { owner = owner, id = id, key = key, title = title, build = spec.build, panel = panel }
+  local registryRef = self
+  entry.handle = registry.readonly({
+    refresh = function()
+      if registryRef.onPanelTabRefresh then
+        registryRef.onPanelTabRefresh(entry)
+      end
+    end,
+  }, "a panel tab")
+  self.panelTabList[#self.panelTabList + 1] = entry
+  self.panelTabsByKey[key] = entry
+  if self.onPanelTabAdded then
+    self.onPanelTabAdded(entry)
+  end
   return entry
 end
 
@@ -277,6 +356,17 @@ function Registry:tabs(menu)
   return list
 end
 
+-- The side tabs of one panel ("cauldron") in registration order.
+function Registry:panelTabs(panel)
+  local list = {}
+  for _, entry in ipairs(self.panelTabList) do
+    if entry.panel == panel then
+      list[#list + 1] = entry
+    end
+  end
+  return list
+end
+
 function Registry:sections()
   return { table.unpack(self.sectionList) }
 end
@@ -353,6 +443,22 @@ function Registry:use(AF)
     error(problem, 2)
   end
 
+  local inertPanelTab = registry.readonly({
+    refresh = function() end,
+  }, "a panel tab")
+  local panels = {}
+  function panels.tab(spec)
+    local entry, problem, kind = registryRef:addPanelTab(owner, spec)
+    if entry then
+      return entry.handle
+    end
+    if kind == "duplicate" then
+      registryRef.log(string.format("%s: panel tab refused: %s", owner, problem))
+      return inertPanelTab
+    end
+    error(problem, 2)
+  end
+
   local catalog = {}
   function catalog.section(spec)
     local entry, problem, kind = registryRef:addSection(owner, spec)
@@ -393,10 +499,28 @@ function Registry:use(AF)
     return nil
   end
 
+  -- Runs fn on the game thread soon, never inside the caller. An error in fn is logged with the mod id.
+  local function defer(fn)
+    if type(fn) ~= "function" then
+      error("api.defer needs a function: api.defer(function() ... end)", 2)
+    end
+    -- Without the game module (only in tests, main.lua always sets runDeferred) the function runs at once.
+    if registryRef.runDeferred then
+      registryRef.runDeferred(owner, fn)
+      return
+    end
+    local ok, problem = xpcall(fn, debug.traceback)
+    if not ok then
+      registryRef.log(string.format("mod %s: a deferred function failed: %s", owner, tostring(problem)))
+    end
+  end
+
   return registry.readonly({
     version = self.version,
+    defer = defer,
     world = registry.readonly(world, "api.world"),
     tabs = registry.readonly(tabs, "api.tabs"),
+    panels = registry.readonly(panels, "api.panels"),
     catalog = registry.readonly(catalog, "api.catalog"),
     console = registry.readonly(console, "api.console"),
   }, "the API handle")

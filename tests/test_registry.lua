@@ -281,4 +281,91 @@ return {
       lu.assertEquals(refreshed, { "recipes/main" })
     end,
   },
+  TestPanelTabs = {
+    testARegisteredTabIsKeptInOrderAndForwardsRefresh = function()
+      local reg = newRegistry()
+      local added, refreshed = {}, {}
+      reg.onPanelTabAdded = function(entry)
+        added[#added + 1] = entry.key
+      end
+      reg.onPanelTabRefresh = function(entry)
+        refreshed[#refreshed + 1] = entry.key
+      end
+      local tab = reg:use(fakeAF("recipes")).panels.tab(tabSpec("fav", "Favorites"))
+      reg:use(fakeAF("other")).panels.tab({ id = "x", title = "Other", panel = "cauldron", build = function() end })
+      lu.assertEquals(added, { "recipes/fav", "other/x" })
+      lu.assertEquals(#reg:panelTabs("cauldron"), 2)
+      lu.assertEquals(reg:panelTabs("cauldron")[1].title, "Favorites")
+      tab:refresh()
+      lu.assertEquals(refreshed, { "recipes/fav" })
+      -- Panel tabs are separate from the menus' tabs.
+      lu.assertEquals(#reg:tabs(), 0)
+    end,
+
+    testInvalidSpecsRaiseAnError = function()
+      local api = newRegistry():use(fakeAF("recipes"))
+      local cases = {
+        { nil, "needs a table" },
+        { { id = "a", title = "T", build = function() end, panel = "tab" }, "'panel' must be" },
+        { { id = "A", title = "T", build = function() end }, "'id' must be" },
+        { { id = "a", title = "", build = function() end }, "'title' must be" },
+        { { id = "a", title = "T" }, "'build' must be a function(page, info)" },
+        { { id = "a", title = "Cauldron", build = function() end }, "game's own tab" },
+        { { id = "a", title = "  cauldron ", build = function() end }, "game's own tab" },
+      }
+      for _, case in ipairs(cases) do
+        lu.assertErrorMsgContains(case[2], api.panels.tab, case[1])
+      end
+    end,
+
+    testDuplicateIdOrTitleIsRefusedWithALogLineAndAnInertTab = function()
+      local reg, logs = newRegistry()
+      local api = reg:use(fakeAF("recipes"))
+      api.panels.tab(tabSpec("fav", "Favorites"))
+      local again = api.panels.tab(tabSpec("fav", "Another"))
+      local sameTitle = reg:use(fakeAF("other")).panels.tab(tabSpec("x", "Favorites"))
+      again:refresh()
+      sameTitle:refresh()
+      lu.assertEquals(#reg:panelTabs("cauldron"), 1)
+      lu.assertEquals(#logs, 2)
+      lu.assertStrContains(logs[1], "already added a panel tab with id 'fav'")
+      lu.assertStrContains(logs[2], "already uses that title")
+    end,
+
+    testRegisteringAfterTheEntrypointIsRefused = function()
+      local reg = newRegistry()
+      local api = reg:use(fakeAF("recipes"))
+      reg:seal()
+      lu.assertErrorMsgContains("too late", api.panels.tab, tabSpec("late", "Late"))
+      lu.assertEquals(#reg:panelTabs("cauldron"), 0)
+    end,
+  },
+
+  TestDefer = {
+    testRunsTheFunctionAndLogsItsErrorsWithTheModId = function()
+      local reg, logs = newRegistry()
+      local api = reg:use(fakeAF("recipes"))
+      local ran = false
+      api.defer(function()
+        ran = true
+      end)
+      lu.assertTrue(ran)
+      api.defer(function()
+        error("boom")
+      end)
+      lu.assertStrContains(logs[1], "mod recipes: a deferred function failed")
+      lu.assertErrorMsgContains("needs a function", api.defer, nil)
+    end,
+
+    testTheGameModuleDecidesWhenItRuns = function()
+      local reg = newRegistry()
+      local queued = {}
+      reg.runDeferred = function(owner, fn)
+        queued[#queued + 1] = { owner, fn }
+      end
+      reg:use(fakeAF("recipes")).defer(function() end)
+      lu.assertEquals(#queued, 1)
+      lu.assertEquals(queued[1][1], "recipes")
+    end,
+  },
 }

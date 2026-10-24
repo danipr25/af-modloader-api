@@ -4,11 +4,12 @@
 local catalogSections = require("catalog_sections")
 local commands = require("commands")
 local console = require("console")
+local panels = require("panels")
 local registry = require("registry")
 local tabs = require("tabs")
 local world = require("world")
 
-local VERSION = "0.1.3"
+local VERSION = "0.1.4"
 
 local reg = registry.new({ selfId = AF.modId, version = VERSION, log = AF.log })
 local dispatcher = commands.new(reg, AF.log)
@@ -43,6 +44,7 @@ local tabMenu = tabs.new({
 })
 local menus = { tab = tabMenu, catalog = catalogMenu }
 local worldMod = world.new({ registry = reg, log = AF.log })
+local panelsMod = panels.new({ registry = reg, log = AF.log })
 
 reg.onCommandAdded = function(entry)
   consoleMod:register(entry)
@@ -52,6 +54,20 @@ reg.onTabRefresh = function(entry)
 end
 reg.onTabSelect = function(entry)
   return menus[entry.menu]:select(entry)
+end
+reg.onPanelTabAdded = function()
+  panelsMod:install()
+end
+reg.onPanelTabRefresh = function(entry)
+  panelsMod:refresh(entry)
+end
+reg.runDeferred = function(owner, fn)
+  ExecuteInGameThread(function()
+    local ok, problem = xpcall(fn, debug.traceback)
+    if not ok then
+      AF.log(string.format("mod %s: a deferred function failed: %s", owner, tostring(problem)))
+    end
+  end)
 end
 reg.worldCurrent = function()
   return worldMod:current()
@@ -67,6 +83,7 @@ tabMenu:install()
 catalogMenu:install()
 worldMod:install()
 AF.onUnload(function()
+  panelsMod:cleanup()
   tabMenu:cleanup()
   catalogMenu:cleanup()
 end)
