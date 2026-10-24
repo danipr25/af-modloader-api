@@ -16,6 +16,7 @@ local ui = require("ui")
 local GROUP_CLASS = "/Game/Blueprints/WBP/Utility/WBP_TagSwitcherGroup.WBP_TagSwitcherGroup_C"
 -- Click sources (docs/widgets.md, verified in game 2026-10-21 in a spike). The tile class is not loaded at start.
 local TILE_CLICK_HOOK = ui.CLASS.recipeTile .. ":OnMouseButtonDown"
+local SWITCHER_CLICK_HOOK = ui.CLASS.tagSwitcher .. ":OnMouseButtonDown"
 local BUTTON_CLICK_HOOK = "/Script/CommonUI.CommonButtonBase:HandleButtonClicked"
 local POLL_MS = 150
 local OPEN_CHECK_MS = 100
@@ -234,12 +235,13 @@ function tabs.new(options)
     self.bar = tabbar.new({ -- pages the tab bar when the tabs do not fit; its arrows are clicked through the router
       log = options.log,
       clicks = self.clicks,
-      route = function(context)
-        self:routeClick(context)
+      ensureHook = function(class)
+        self:ensureSwitcherHook(class)
       end,
     })
   end
   self.tileHook = "none" -- "none", "requested" (handed to hooks.install), "scheduled" or "registered"
+  self.switcherHook = "none" -- "none", "scheduled" or "registered"
   self.panelHooks = "none" -- lazy menus: "none", "scheduled" or "registered"
   self.disabled = false
   self.stopPolling = nil
@@ -302,6 +304,9 @@ function Tabs:fill(state, record)
       clicks = self.clicks,
       onTileCreated = function(class)
         self:ensureTileHook(class)
+      end,
+      onMarkCreated = function(class)
+        self:ensureSwitcherHook(class)
       end,
     }
     local page, session = ui.newPage(ctx)
@@ -794,6 +799,48 @@ function Tabs:ensureTileHook(class)
             .. " ("
             .. tostring(problem)
             .. "). Clicks on tiles will not work until it succeeds; it is tried again the next time a tile is made."
+        )
+      end
+    end
+  end)
+end
+
+-- Registers the tab widget click hook (WBP_TagSwitcher_C:OnMouseButtonDown) once something that needs it exists: the
+-- tab bar arrows and the marks of row:mark both call this, so each router registers that function exactly once. Cheap
+-- once registered, a failed registration is tried again the next time. Deferred to the game thread. If the class was
+-- loaded again since (a different object), the hook is registered again: a hook belongs to the class object.
+function Tabs:ensureSwitcherHook(class)
+  local address = addressOf(class)
+  if self.switcherHook == "scheduled" then
+    return
+  end
+  if self.switcherHook ~= "none" then
+    if address == nil or address == self.switcherHookClass then
+      return
+    end
+    self.log("the game loaded the tab class again: hooking tab widget clicks again")
+  end
+  self.switcherHook = "scheduled"
+  self.switcherHookClass = address
+  ExecuteInGameThread(function()
+    local ok, problem = pcall(RegisterHook, SWITCHER_CLICK_HOOK, function(context)
+      self:routeClick(context)
+    end)
+    if ok then
+      self.switcherHook = "registered"
+      self.log("tab widget clicks are on: hooked " .. SWITCHER_CLICK_HOOK)
+    else
+      self.switcherHook = "none"
+      self.switcherHookClass = nil
+      if not self.loggedSwitcherHookFailure then
+        self.loggedSwitcherHookFailure = true
+        self.log(
+          "could not hook "
+            .. SWITCHER_CLICK_HOOK
+            .. " ("
+            .. tostring(problem)
+            .. "). The arrows of the tab bar and marks will not react to clicks until it succeeds; it is tried again "
+            .. "the next time one is made."
         )
       end
     end

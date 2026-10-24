@@ -8,8 +8,7 @@
 local plan = require("tabbar_plan")
 local ui = require("ui")
 
-local TAB_CLASS = "/Game/Blueprints/WBP/Utility/WBP_TagSwitcher.WBP_TagSwitcher_C"
-local CLICK_HOOK = TAB_CLASS .. ":OnMouseButtonDown"
+local TAB_CLASS = ui.CLASS.tagSwitcher
 local OWNER = "af-modloader-api"
 -- ESlateVisibility, and the overlay slot alignments (verified in the tab bar probe, 2026-10-22).
 local VISIBLE, COLLAPSED, HIT_TEST_INVISIBLE = 0, 1, 3
@@ -29,14 +28,15 @@ local function className(object)
   return object:GetClass():GetFName():ToString()
 end
 
--- options: { log = function(text), clicks = the click router, route = function(context) for the tab click hook }
+-- options: { log = function(text), clicks = the click router,
+--            ensureHook = function(class) makes sure the router hears clicks on the tab widget class (tabs.lua owns
+--            that one hook, the arrows and the marks of row:mark share it) }
 function tabbar.new(options)
   local self = setmetatable({}, Bar)
   self.log = options.log
   self.clicks = options.clicks
-  self.route = options.route
+  self.ensureHook = options.ensureHook
   self.widths = {} -- title -> measured width (a title keeps its width; 0 is never stored)
-  self.hook = "none" -- "none", "scheduled" or "registered"
   return self
 end
 
@@ -184,7 +184,7 @@ function Bar:ensureArrows(state, rec)
       end,
     })
   end
-  self:ensureClickHook(addressOf(StaticFindObject(TAB_CLASS)))
+  self.ensureHook(StaticFindObject(TAB_CLASS))
 end
 
 -- Puts the page box last in the overlay so it is drawn over the arrows, as it is over the real tabs: the arrows were
@@ -239,46 +239,6 @@ function Bar:moveBoxLast(rec)
       )
     end
   end
-end
-
--- Registers the arrows' click hook once the tab class is known to be loaded. Called whenever arrows are made: cheap
--- once registered, a failed registration is tried again the next time. Deferred to the game thread. If the class was
--- loaded again since (a different object), the hook is registered again: a hook belongs to the class object.
-function Bar:ensureClickHook(address)
-  if self.hook == "scheduled" then
-    return
-  end
-  if self.hook ~= "none" then
-    if address == nil or address == self.hookClass then
-      return
-    end
-    self.log("the game loaded the tab class again: hooking tab bar arrow clicks again")
-  end
-  self.hook = "scheduled"
-  self.hookClass = address
-  ExecuteInGameThread(function()
-    local ok, problem = pcall(RegisterHook, CLICK_HOOK, function(context)
-      self.route(context)
-    end)
-    if ok then
-      self.hook = "registered"
-      self.log("tab bar arrow clicks are on: hooked " .. CLICK_HOOK)
-    else
-      self.hook = "none"
-      self.hookClass = nil
-      if not self.loggedHookFailure then
-        self.loggedHookFailure = true
-        self.log(
-          "could not hook "
-            .. CLICK_HOOK
-            .. " ("
-            .. tostring(problem)
-            .. "). The arrows of the tab bar will not react to clicks until it succeeds; it is tried again the next "
-            .. "time the arrows are made."
-        )
-      end
-    end
-  end)
 end
 
 local function setVisibility(widgets, visibility)

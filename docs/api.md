@@ -1,6 +1,6 @@
 # API reference
 
-AF Mod Loader API 0.1.2 for mod authors. Game 1.1.5024, UE4SS 1181, AF Mod Loader 0.1.0.
+AF Mod Loader API 0.1.3 for mod authors. Game 1.1.5024, UE4SS 1181, AF Mod Loader 0.1.0.
 
 Each function says what is **verified in game** and what is **not verified yet**. Nothing marked "not verified" has run in the game: it is written from the UE4SS and Unreal Engine documentation, wrapped so that a failure is logged instead of crashing, and waits for the in-game test. Verified findings are recorded in [tab-menu.md](tab-menu.md), [catalog-menu.md](catalog-menu.md) and [console.md](console.md).
 
@@ -16,7 +16,7 @@ The API is 0.x until 1.0. A patch version (0.1.1) fixes things or adds functions
 
 `api.version` is the installed version as text, like `"0.1.0"`.
 
-Raise the lower bound to the first version that has every call your mod uses. Every call in this reference is in 0.1.0, so `>=0.1.0 <0.2.0` is enough, except the ones that say "added in 0.1.1" (`page:columns`, `pane:clear`, and the `space` functions): a mod that uses one needs `>=0.1.1 <0.2.0`. The ones that say "added in 0.1.2" (the `divider` functions and the options of `page:columns`) need `>=0.1.2 <0.2.0`. Later patch versions will say which version added what. Development builds before the first public release were numbered 0.1.1 to 0.1.7; 0.1.0 is the first public release, and the in-game verification records below that name those build numbers stay as they were written.
+Raise the lower bound to the first version that has every call your mod uses. Every call in this reference is in 0.1.0, so `>=0.1.0 <0.2.0` is enough, except the ones that say "added in 0.1.1" (`page:columns`, `pane:clear`, and the `space` functions): a mod that uses one needs `>=0.1.1 <0.2.0`. The ones that say "added in 0.1.2" (the `divider` functions and the options of `page:columns`) need `>=0.1.2 <0.2.0`. The one that says "added in 0.1.3" (`row:mark`) needs `>=0.1.3 <0.2.0`. Later patch versions will say which version added what. Development builds before the first public release were numbered 0.1.1 to 0.1.7; 0.1.0 is the first public release, and the in-game verification records below that name those build numbers stay as they were written.
 
 ### Threads
 
@@ -230,7 +230,7 @@ recipe:item("Coal", 1)
 
 Status of `row:divider()`: the widget (an `Image` with no texture, tinted with `SetColorAndOpacity` with the sRGB value of the game's divider art as is, `SetVisibility(3)`, inside a `SizeBox` with `SetWidthOverride(2.0)`, in a slot with vertical alignment Fill and two `Spacer` of 16) was **verified in a probe** (2026-10-23, game 1.1.5024, UE4SS experimental): it spans the row and reads as a subtle light line; three Advanced recipes per row fit in the two-thirds pane with lines between them. In the probe `SetDesiredSizeOverride` on the `Image` was ignored (lines about 40 thick), which is why the `SizeBox` is used. The API's own `row:divider()` is **verified in game** (2026-10-23, game 1.1.5024, API 0.1.2 test build) in list rows and pane rows, and three Advanced groups per row fit in the two-thirds pane with the page padding of 40.
 
-Buttons live in rows made with `page:row()`. List rows (`list:row()`) have no buttons. About three buttons fit in a row: a fourth runs past the panel.
+Buttons live in rows made with `page:row()`. List rows (`list:row()`) have no buttons, only marks (`row:mark`). About three buttons fit in a row: a fourth runs past the panel.
 
 Small buttons in 0.1.2: scale 0.7 and `button.ContentBorder:SetPadding` left and right 16. A probe (2026-10-23, game 1.1.5024) picked 0.7 with 10 by eye; the API test then showed a long label ("Show advanced") filling its button, so the padding went up to 16, which looked right in game (2026-10-23, game 1.1.5024, API 0.1.2 test build). Arrows stay at 0.6.
 
@@ -273,19 +273,27 @@ Status: **verified in game** (2026-10-21, dev build 0.1.1): clicks on two differ
 
 Adds a scrolling list of rows.
 
-- `list:clear()` removes every row. Rows made before the call stop working.
+- `list:clear()` removes every row. Rows made before the call stop working, and (from 0.1.3) so do the clicks of their marks.
 - `list:row()` adds a row and returns it.
 - `row:text(str)` adds text to the row and returns a text handle (`:set`).
 - `row:item(itemName, count)` adds the game's item tile for the item, with its icon and the game's own tooltip. `itemName` is the item's name in the game's data (for example `"GentianNectar"`), `count` defaults to 1.
+- `row:mark(label, onClick)` (added in 0.1.3) adds a small clickable text to the row and returns a text handle (`set(label)` and `color(r, g, b, a)`, the same as `row:text`). `onClick()` is called when the player clicks it, with any mouse button, on press. It is for a star or a similar toggle: the mark stays where it is and `mark:set(...)` changes its label in place, without rebuilding the row. `label` must be a non-empty string and `onClick` a function, otherwise it is an error at your call. The mark is drawn at 0.6 of its size, is 40 wide before the 0.6 scale (not verified in game) and is aligned to the **top** of the row (not centered like the other things in a row), so next to tall item tiles it sits at the top right of the recipe. Its text has the default text color (white): color it with `mark:color(...)`. It exists **only on list rows**: page rows, pane rows and section rows have no `row:mark` (calling it there raises "attempt to call a nil value"). The clicks of a list's marks stop working when the list is cleared or the page is rebuilt, and on such a dead handle `set` and `color` do nothing. There is no hover or pressed look: the game's tab widget behind the text is invisible.
 
 ```lua
 local list = page:list()
 local row = list:row()
 row:text("Gentian Nectar x2 -> ")
 row:item("GentianNectar", 2)
+local star
+star = row:mark("☆", function()
+  star:set("★") -- changed in place, the row is not rebuilt
+end)
+star:color(0.022, 0.033, 0.053)
 ```
 
 The API does not look up item names or recipes: that is the mod's job.
+
+Status of `row:mark`: the widget (the game's `WBP_TagSwitcher_C` with its titles emptied, root `SizeBox` min and max desired width 40, `SetRenderOpacity(0)`, the label on top in an `Overlay`, all in a `ScaleBox` at 0.6, row slot centered vertically; aligned top in the probe, centered after the first in-game test on 2026-10-24) and the click on `WBP_TagSwitcher_C:OnMouseButtonDown` were **verified in game** in a probe (2026-10-23, game 1.1.5024, API 0.1.2): ★ and ☆ draw in a `TextBlock`, only the label shows (no hover card or glow), three Advanced recipes plus their marks fit in the two-thirds pane, and a click toggled the label (first column only). The API's own `row:mark` is **not verified in game yet**: the tests with a fake game prove the arguments, the click routing and the lifetime only. The candidates that failed in the probe are in [widgets.md](widgets.md).
 
 Status: the item tile (`WBP_SimpleItemTile_C` with `UpdateItemInfo`) is **verified in game** with a count of 1, including its tooltip. The scrolling list, its rows and the fill-the-page setting are **verified in game** too (2026-10-21): 300 rows of item tiles scroll smoothly, building them takes about 80 ms, and clearing and rebuilding the list on every filter change feels instant. How a count other than 1 is shown was not checked.
 
@@ -474,7 +482,7 @@ Status: **verified in game** with a throwaway mod (the console opens with both k
 | `WBP_CatalogPanel_C` members `WBP_TagSwitcherGroup`, `SW_Main`, `CurrentActivePage`; `WidgetSwitcherSlot:SetPadding`; `IsActivated` | The V menu's tab mechanism, padding of the pages, the highlighted tab, "is the menu open" | members and the mechanism verified in a probe (`CurrentActivePage` not fully); `SetPadding` and `IsActivated` not verified |
 | `WBP_CatalogPanel_C` bound `OnTagSwitch` event (name in [catalog-menu.md](catalog-menu.md)) | Safety net: makes sure the V menu shows the page of the clicked mod tab (`SW_Main:GetActiveWidget`, `SetActiveWidget`) | the event fires on every tab click, verified in a probe; the safety net itself is not verified |
 | `WBP_TagSwitcherGroup_C:OnEntryClick(index)` | `tab:select()` | verified in a probe from a button click through `ExecuteInGameThread` (2026-10-22, game 1.1.5024) |
-| `WBP_TagSwitcher_C:OnMouseButtonDown` (path in [tab-menu.md](tab-menu.md)) | Clicks on the tab bar's arrows (fires for every tab button in the game, for any mouse button; the API ignores the ones it did not create) | hookable and fires once per click, verified in a probe (2026-10-22, game 1.1.5024); registered when the arrows are first made |
+| `WBP_TagSwitcher_C:OnMouseButtonDown` (path in [tab-menu.md](tab-menu.md)) | Clicks on the tab bar's arrows and on the marks made by `row:mark` (fires for every tab button in the game, for any mouse button; the API ignores the ones it did not create) | hookable and fires once per click, verified in a probe (2026-10-22, game 1.1.5024); registered when the first arrow or the first mark is made, once per menu |
 | `SetVisibility`, `ForceLayoutPrepass`, `GetDesiredSize`, slot `SetPadding` on the tab bar and its tabs; `Overlay:AddChildToOverlay`; `Image:SetBrushFromTexture` | Paging the tab bar | verified in game (2026-10-22, game 1.1.5024, API 0.1.4); hiding the arrows when the tabs fit again is not verified (`SetVisibility` on the arrows themselves) |
 | `TagSwithcer.TitleList`, `EntryPanel:ClearChildren()`, `EntryList:Empty()`, `PreConstruct(false)`, `WidgetSwitcher_0:AddChild()` | The tab mechanism | verified in game |
 | `/Script/CommonUI.CommonButtonBase:HandleButtonClicked` | Clicks on buttons made by `row:button` (fires for every CommonUI button in the game; the API ignores the ones it did not create) | hookable and fires on a click, verified in a spike (2026-10-21) |

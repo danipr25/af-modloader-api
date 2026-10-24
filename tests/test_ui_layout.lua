@@ -11,7 +11,14 @@ local GLOBALS = { "StaticFindObject", "StaticConstructObject", "FText", "FName",
 -- answers the few calls that return something. Properties the API reads a widget of (a button's border) give a
 -- widget of their own.
 local fake
-local SUB_WIDGETS = { ContentBorder = true, Txt_BuildOptionType = true }
+local SUB_WIDGETS = {
+  ContentBorder = true,
+  Txt_BuildOptionType = true,
+  Txt_Title = true,
+  Txt_Title_Highlight = true,
+  WidgetTree = true,
+  RootWidget = true,
+}
 local function newWidget(class)
   local widget = { class = class, calls = {}, address = #fake.widgets + 1 }
   fake.widgets[#fake.widgets + 1] = widget
@@ -70,7 +77,7 @@ local function ofClass(class)
 end
 
 local function setupGame()
-  fake = { widgets = {}, saved = {}, logs = {}, events = {}, missing = {} }
+  fake = { widgets = {}, saved = {}, logs = {}, events = {}, missing = {}, markClasses = {} }
   for _, name in ipairs(GLOBALS) do
     fake.saved[name] = _G[name]
   end
@@ -89,7 +96,13 @@ local function setupGame()
       return true
     end
     object.Create = function(_, _, class)
-      return newWidget(class.path == ui.CLASS.divider and "divider" or "tile")
+      local kind = "tile"
+      if class.path == ui.CLASS.divider then
+        kind = "divider"
+      elseif class.path == ui.CLASS.tagSwitcher then
+        kind = "switcher"
+      end
+      return newWidget(kind)
     end
     return object
   end
@@ -126,6 +139,9 @@ local function newPage()
       fake.logs[#fake.logs + 1] = text
     end,
     clicks = router,
+    onMarkCreated = function(class)
+      fake.markClasses[#fake.markClasses + 1] = class
+    end,
   })
   return page, session, router, root
 end
@@ -632,6 +648,82 @@ return {
       session.alive = false
       router:dropSession(session)
       lu.assertEquals(countClicks(router), 0)
+    end,
+
+    testAMarkIsAnInvisibleTabWidgetWithItsLabelOnTopAndItsClickReachesTheMod = function()
+      local page, _, router = newPage()
+      local clicked = 0
+      local handle = page:list():row():mark("\u{2606}", function()
+        clicked = clicked + 1
+      end)
+      lu.assertEquals(#fake.markClasses, 1)
+      lu.assertEquals(fake.markClasses[1].path, ui.CLASS.tagSwitcher)
+      local switcher = ofClass("switcher")[1]
+      lu.assertEquals(callsOf(switcher, "SetRenderOpacity")[1][1], 0.0)
+      lu.assertEquals(callsOf(switcher.WidgetTree.RootWidget, "SetMinDesiredWidth")[1][1], 40.0)
+      lu.assertEquals(callsOf(switcher.WidgetTree.RootWidget, "SetMaxDesiredWidth")[1][1], 40.0)
+      lu.assertEquals(callsOf(switcher.Txt_Title, "SetText")[1][1], "")
+      local label = ofClass("/Script/UMG.TextBlock")[1]
+      lu.assertEquals(callsOf(label, "SetText")[1][1], "\u{2606}")
+      lu.assertTrue(router:route(switcher.address, true))
+      lu.assertEquals(clicked, 1)
+      -- The handle is a text handle.
+      handle:set("\u{2605}")
+      handle:color(0.1, 0.2, 0.3)
+      lu.assertEquals(callsOf(label, "SetText")[2][1], "\u{2605}")
+      lu.assertEquals(#callsOf(label, "SetColorAndOpacity"), 1)
+    end,
+
+    testClearingAListForgetsItsMarksAndTheOldHandleIsInert = function()
+      local page, _, router = newPage()
+      local list = page:list()
+      local old = list:row():mark("x", function() end)
+      local oldRow = list:row()
+      lu.assertEquals(countClicks(router), 1)
+      list:clear()
+      lu.assertEquals(countClicks(router), 0)
+      local built = #fake.widgets
+      old:set("y")
+      oldRow:mark("z", function() end) -- a row of the old generation
+      lu.assertEquals(#fake.widgets, built)
+      list:row():mark("x", function() end)
+      lu.assertEquals(countClicks(router), 1)
+    end,
+
+    testMarksOfADeadPageGiveInertHandles = function()
+      local page, session = newPage()
+      local row = page:list():row()
+      session.alive = false
+      local built = #fake.widgets
+      local mark = row:mark("x", function() end)
+      mark:set("y")
+      mark:color(1, 1, 1)
+      local dead = page:list():row():mark("x", function() end)
+      dead:set("y")
+      dead:color(1, 1, 1)
+      lu.assertEquals(#fake.widgets, built)
+    end,
+
+    testBadMarkArgumentsAreErrorsAtTheModsCall = function()
+      local page = newPage()
+      local row = page:list():row()
+      local built = #fake.widgets
+      local noop = function() end
+      for _, args in ipairs({ { false, noop }, { "", noop }, { 5, noop }, { "x" }, { "x", "no" } }) do
+        local ok, problem = pcall(function()
+          row:mark(args[1], args[2])
+        end)
+        lu.assertFalse(ok)
+        lu.assertStrContains(problem, "row:mark needs")
+        lu.assertStrContains(problem, "test_ui_layout.lua") -- the level of the caller, not of the API
+      end
+      lu.assertEquals(#fake.widgets, built)
+    end,
+
+    testOnlyListRowsHaveMarks = function()
+      local page = newPage()
+      lu.assertNil(page:row().mark)
+      lu.assertNil(page:columns({ 1, 2 })[1]:row().mark)
     end,
   },
 }
